@@ -21,6 +21,8 @@ import json
 import subprocess
 from pathlib import Path
 
+from .config import RTFM_DB
+
 
 def rtfm_check_path(path: str | Path, timeout: int = 15) -> dict:
     """Appel `rtfm check --path <path>` et retourne le JSON parsé.
@@ -35,7 +37,8 @@ def rtfm_check_path(path: str | Path, timeout: int = 15) -> dict:
     `error` et `matches: 0`.
     """
     proc = subprocess.run(
-        ["rtfm", "check", "--path", str(path), "--format", "json"],
+        ["rtfm", "check", "--db", str(RTFM_DB),
+         "--path", str(path), "--format", "json"],
         capture_output=True,
         text=True,
         timeout=timeout,

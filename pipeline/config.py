@@ -12,6 +12,10 @@ QUARANTINE = REGISTRY / "_quarantine"
 PLUGIN_LIB = Path.home() / ".claude/plugins/source-collector/lib"
 TOOLS = REGISTRY / "tools"
 
+# DB RTFM du projet doctoral (utilisée par Couche 5 — corrélation des échecs).
+# Hardcodée comme VAULT : ce repo ne tourne que sur la machine du doctorant.
+RTFM_DB = Path.home() / "dev/musicology-phd/.rtfm/library.db"
+
 # Insère le plugin lib dans sys.path pour que `import validate_pdf_content` marche.
 if str(PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(PLUGIN_LIB))

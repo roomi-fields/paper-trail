@@ -41,6 +41,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .config import RTFM_DB
 from .registry import Ref
 
 
@@ -103,7 +104,8 @@ def list_failures(
         _warn("commande `rtfm` introuvable sur le PATH — checks RTFM ignorés")
         return []
 
-    cmd = ["rtfm", "failed", "-f", "json", "--limit", str(limit)]
+    cmd = ["rtfm", "failed", "--db", str(RTFM_DB),
+           "-f", "json", "--limit", str(limit)]
     if corpus:
         cmd.extend(["--corpus", corpus])
 
