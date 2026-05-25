@@ -116,9 +116,11 @@ permet de retenter une ref depuis zéro.
 
 ## 4. Anti-fabrication — pourquoi tout ce contrôle
 
-Avant le worker, les citations étaient écrites « de mémoire ». Résultat
-sur P9α v1 (2026-02) : 12 erreurs biblio dont un *quote* fabriqué → paper
-retiré.
+Les citations académiques écrites « de mémoire » produisent
+systématiquement des erreurs : attributions inversées, quotes
+fabriqués, mauvaise paire auteur+titre, confusion d'homonymes.
+Cette section liste les garde-fous mécaniques que le worker enforce
+pour rendre ces erreurs impossibles structurellement.
 
 Garde-fous mécaniques actuels :
 

@@ -1,134 +1,135 @@
 # NOTICE — Attributions
 
-Ce plugin Claude Code `paper-trail` est sous licence MIT (cf. `LICENSE`).
-Certains composants ou patterns sont inspirés de projets tiers ; cette
-notice en liste les attributions et les origines.
+The `paper-trail` plugin is distributed under the MIT License (see
+`LICENSE`). Some components or patterns are inspired by, or imported
+from, third-party projects. This file lists the attributions and
+origins.
 
 ---
 
-## Composants importés depuis d'autres projets de l'auteur
+## Components imported from author's other projects
 
-### Worker B (FSM 8 états + cascade 10 niveaux + 19 invariants doctor)
+### Worker engine (state machine + cascade + invariants)
 
-Écrit par Romain Peyrichou pour le projet `references-consolidation`
-(2026-05). Modules sous `pipeline/` et `tools/`. Licence : MIT (auteur
-original = mainteneur actuel).
+Written by Romain Peyrichou. Modules under `pipeline/` and `tools/`.
+Provided under the MIT License of this project.
 
-### Helpers PDF acquisition (lib/)
+### PDF acquisition helpers (`lib/`)
 
-Originalement écrits pour le plugin Claude Code `source-collector`
-(`~/.claude/plugins/source-collector/lib/`) par Romain Peyrichou.
-Importés ici en MIT pour rendre le plugin paper-trail self-contained.
+Originally written for a personal Claude Code plugin
+(`source-collector`). Imported here under MIT for self-containment.
 
-Fichiers concernés :
+Files concerned:
+
 - `lib/oa_finder.py` — Crossref OA URL resolver
 - `lib/s2_resolver.py` — Semantic Scholar resolver
-- `lib/archive_org_helper.py` — archive.org search & download
+- `lib/archive_org_helper.py` — archive.org search and download
 - `lib/validate_pdf_content.py` — page 1 anti-homonymy validation
 - `lib/download_books.py` — generic PDF download utility
-- `lib/shadow/annas_archive.py` — Anna's Archive helper (opt-in)
+- `lib/shadow/annas_archive.py` — Anna's Archive helper (opt-in,
+  see DISCLAIMER.md)
 - `lib/shadow/scihub.py` — Sci-Hub helper (opt-in, extracted from
-  pipeline/cascade.py)
+  `pipeline/cascade.py`)
 
-### Skills d'écriture et d'audit (skills/)
+### Writing and audit skills
 
-Originalement écrites pour le projet doctoral musicology-phd
-(`~/dev/musicology-phd/.claude/skills/`) par Romain Peyrichou.
-Généralisées pour usage scientifique multi-domaines dans paper-trail,
-basculées en MIT.
+Originally written for a private academic research project. Generalized
+for multi-domain use in paper-trail under the MIT License.
 
-Skills concernées :
-- `skills/sota-writer/` (ex `~/musicology-phd/.claude/skills/sota-writer/`)
-- `skills/sota-auditor/` (ex `~/musicology-phd/.claude/skills/sota-curator/`,
-  renommée pour cohérence terminologique)
-- `skills/citation-receipts/` (ex
-  `~/musicology-phd/.claude/skills/citation-verification/`, enrichie
-  du format RECEIPTS.md)
-- `skills/paper-writer/` (ex `~/musicology-phd/.claude/skills/paper-writer/`)
+Skills concerned:
 
-Agents et outils dérivés :
-- `agents/researcher.md` (ex `corpus-explorer` skill, converti en sub-agent)
-- `tools/notebooklm-integration.md` (ex `notebooklm-manager` skill)
-- `tools/citation_audit.py` (généralisation de
-  `~/musicology-phd/scripts/verify_claims.py` +
-  `~/musicology-phd/scripts/validate_claims_s2.py`, paramétré par
-  fichier source)
+- `skills/sota-writer/`
+- `skills/sota-auditor/`
+- `skills/citation-receipts/`
+- `skills/paper-writer/`
+
+Derived agents and tools:
+
+- `agents/researcher.md` (converted skill → sub-agent)
+- `tools/notebooklm-integration.md`
+- `tools/citation_audit.py` (parameterized by source file path,
+  generalization of two domain-specific scripts)
 
 ---
 
-## Patterns inspirés de plugins tiers (sans copie de code)
+## Inspiration patterns (concept only, no code copied)
 
 ### `Imbad0202/academic-research-skills` (ARS) v3.9.4
 
-Licence : CC BY-NC 4.0. Auteur : Cheng-I Wu
+License: CC BY-NC 4.0. Author: Cheng-I Wu
 (https://github.com/Imbad0202/academic-research-skills).
 
-**Concepts repris** (pas de code copié) :
-- Architecture du pipeline d'écriture multi-stages (research → write →
-  review → revise → finalize)
-- Notion d'audit anchors pour la traçabilité des claims
-- Pattern adapter pour les vaults (Obsidian, flat, etc.)
+**Concepts referenced** (no code copied):
 
-Aucun fichier source ARS n'est inclus dans paper-trail. La compatibilité
-licence MIT du plugin est préservée car CC BY-NC 4.0 n'autorise pas le
-fork sous une licence différente, mais permet l'inspiration sur des
-concepts/architectures non copyrightables.
+- Research → write → review → revise → finalize pipeline
+  architecture
+- Audit anchors for claim traceability
+- Vault adapter pattern (Obsidian, flat, etc.)
+
+No ARS source file is included in paper-trail. The MIT licensing of
+this project is preserved because CC BY-NC 4.0 does not allow
+relicensing of derivative code, but inspiration on non-copyrightable
+architectural concepts is permitted.
 
 ### `Agents365-ai/paper-fetch` v0.5.0
 
-Licence : MIT. Auteur : Agents365-ai
+License: MIT. Author: Agents365-ai
 (https://github.com/Agents365-ai/paper-fetch).
 
-**Patterns repris** :
-- Format de sortie JSON stable pour les acquisitions de PDFs
-- Convention de nommage de fichier `{first_author}_{year}_{journal}_{title}.pdf`
-- Exit codes typés pour routing orchestrateur
+**Patterns referenced**:
+
+- Stable JSON output format for PDF acquisition
+- File naming convention `{first_author}_{year}_{journal}_{title}.pdf`
+- Typed exit codes for orchestrator routing
 
 ### `JamesWeatherhead/receipts`
 
-Licence : MIT. Auteur : James Weatherhead
+License: MIT. Author: James Weatherhead
 (https://github.com/JamesWeatherhead/receipts).
 
-**Patterns repris** :
-- Audit local PDF↔claim (lecture du paper + sources, génération verdict
-  par citation)
-- Format `RECEIPTS.md` avec verdicts structurés VALID / ADJUST /
-  INVALID + raison + correction suggérée
+**Patterns referenced**:
 
-Le code de receipts est en JavaScript. Notre implémentation est en
-Python (`tools/citation_audit.py` + skill `citation-receipts`),
-ré-implémentation indépendante du pattern.
+- Local PDF↔claim audit (read paper + sources, generate per-citation
+  verdict)
+- `RECEIPTS.md` format with structured verdicts (VALID / ADJUST /
+  INVALID + reason + suggested correction)
+
+The `receipts` code is in JavaScript. Our implementation is in Python
+(`tools/citation_audit.py` + skill `citation-receipts`), an
+independent reimplementation of the pattern.
 
 ### `fcakyon/phd-skills` v1.3.0
 
-Licence : MIT. Auteur : fcakyon
+License: MIT. Author: fcakyon
 (https://github.com/fcakyon/phd-skills).
 
-**Patterns repris** :
-- Conception des hooks d'intégrité (`PostToolUse`, `PreToolUse`,
-  `SessionEnd`) pour vérifier les artefacts académiques en temps réel
-- Idée du `factcheck` contre des bases bibliographiques
+**Patterns referenced**:
+
+- Integrity hooks design (`PostToolUse`, `PreToolUse`, `SessionEnd`)
+  for real-time validation of academic artifacts
+- Fact-check pattern against bibliographic databases
 
 ### `Psypeal/claude-knowledge-vault` v2.4.0
 
-Licence : MIT. Auteur : Psypeal
+License: MIT. Author: Psypeal
 (https://github.com/Psypeal/claude-knowledge-vault).
 
-**Concepts repris** :
-- YAML frontmatter pour les références (`.vault/raw/<slug>.md`)
-- Pattern « Sci-Hub opt-in par projet » (que nous avons étendu en
-  opt-in via variable d'environnement)
+**Concepts referenced**:
+
+- YAML frontmatter for references (`.vault/raw/<slug>.md`)
+- Per-project Sci-Hub opt-in pattern (which we extended to global
+  opt-in via environment variable)
 
 ---
 
-## MCPs utilisés (configurés par l'utilisateur, hors-périmètre)
+## External MCPs used (configured by the user, out of scope)
 
-Paper-trail interagit avec des MCP servers que l'utilisateur configure
-indépendamment dans son `~/.claude/mcp.json` ou `<project>/.mcp.json` :
+paper-trail interacts with MCP servers that the user configures
+independently in `~/.claude/mcp.json` or `<project>/.mcp.json`:
 
-- `paper-search` (recherche académique multi-plateforme)
-- `notebooklm` (corpus de livres, optionnel)
-- `rtfm` (indexation locale, optionnel)
+- `paper-search` (multi-platform academic search)
+- `notebooklm` (book corpus, optional)
+- `rtfm` (local indexing, optional)
 
-Ces MCPs ne sont pas inclus dans paper-trail. Le plugin documente leur
-utilisation mais ne dépend pas formellement de leur présence.
+These MCPs are not distributed with paper-trail. The plugin documents
+their usage but does not formally depend on their presence.

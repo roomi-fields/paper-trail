@@ -87,7 +87,7 @@ Sources of « refs to audit » in the paper-trail workflow :
    that have moved recently and need attention
 3. **`pdf-cascade` blocked outputs** — refs in `blocked_human:title_mismatch`
    or `blocked_human:cascade_exhausted`
-4. **User-driven request** — « audit ce SOTA », « audit le paper P9α »
+4. **User-driven request** — "audit this SOTA", "audit this paper"
 5. **`/paper-trail:audit-sota <path>`** command output
 6. **`pipeline doctor --correlate-rtfm`** — RTFM signals that an
    acquired PDF has format/OCR issues

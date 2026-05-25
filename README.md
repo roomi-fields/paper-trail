@@ -1,147 +1,179 @@
 # paper-trail
 
-Plugin Claude Code **anti-hallucination** pour la recherche scientifique.
+> Anti-hallucination plugin for academic research in Claude Code.
+> Create literature reviews and papers guaranteed without fabricated
+> citations.
 
-> Crée des SOTAs / revues de littérature **garantis sans fabrication**,
-> audite les SOTAs et articles existants (purge ou warnings), valide
-> mécaniquement chaque citation via un moteur strict : FSM 8 états +
-> cascade d'acquisition PDF + page 1 anti-homonymie + 19 invariants de
-> cohérence registre.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CHANGELOG.md)
+[![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin-purple.svg)](https://docs.claude.com/en/docs/claude-code/plugins)
 
-## Pourquoi ce plugin existe
+## Why this exists
 
-Paper 9α v1 (Computational Linguistics, 2026-02) a été retiré du
-processus de revue après détection de **12 erreurs bibliographiques**
-dont une attribution inversée et un *quote* fabriqué. Cause racine :
-citations écrites « de mémoire » sans vérification.
+Citation hallucinations in academic writing — fabricated quotes,
+inverted attributions, misidentified authors — are systemic when the
+author writes from memory and looks up sources afterward. Retracted
+papers from major venues have shown the failure mode is structural,
+not anecdotal.
 
-Ce plugin rend l'erreur **mécaniquement impossible** :
+`paper-trail` makes the error **mechanically impossible** by enforcing
+a research-first workflow with strict state transitions, automated PDF
+acquisition with anti-homonymy validation, and per-citation audit
+against the actual source text.
 
-- **Machine à états stricte** (FSM 8 états) — aucune ref ne peut être
-  citée sans avoir traversé acquisition + page 1 validation + claim
+## Features
+
+- **Strict state machine (8 states)** — no reference can be cited
+  without traversing acquisition → page 1 validation → claim
   verification
-- **Anti-homonymie** à chaque étape — validation page 1 (auteur attendu +
-  similarité titre + zéro mots-clés off-domain)
-- **Cascade 10 niveaux** d'acquisition PDF avec logging exhaustif des
-  tentatives
-- **19 invariants doctor** (I1-I19) cross-session — détection automatique
-  des dérives du registre
-- **`assert_coverage.py`** — garde-fou mécanique qui refuse une release
-  si une étape n'a pas son tableau de tests E2E
-
-## Statut
-
-**v0.1.0 — en cours de construction.**
-
-Voir `plans/PLUGIN_EXECUTION_PLAN.md` pour le plan d'exécution en 6
-phases (P0 fait, P1-P5 à venir).
-
-Le **worker B** (moteur Python sous `pipeline/`) est complet et testé
-(19/19 invariants synthétiques, idempotence, concurrence, événements).
-Les skills, commands, agents, hooks et docs sont en cours
-d'intégration.
+- **Anti-homonymy guard** — page 1 of each downloaded PDF is matched
+  against expected author, title, and domain keywords before
+  acceptance
+- **10-source acquisition cascade** — Crossref OA, arXiv, OpenAlex,
+  Unpaywall, HAL, CORE, archive.org, WebSearch queue (+ Sci-Hub and
+  Anna's Archive available as **strict opt-in**, see
+  [`DISCLAIMER.md`](DISCLAIMER.md))
+- **19 mechanical invariants** — automated registry health check with
+  safe auto-fix for cosmetic drift
+- **Inverted writing workflow** — researches and reads first, writes
+  last; refuses to draft when source corpus is too thin
+- **Per-citation audit** — generates `RECEIPTS.md` classifying each
+  citation as VALID / ADJUST / INVALID / UNVERIFIABLE
+- **Vault-agnostic** — works with Obsidian, flat markdown, or Zotero
+  layouts (adapter pattern)
+- **Mechanical coverage guard** — refuses to ship a new version
+  without explicit test evidence for each component
 
 ## Quick start
 
-(Section à compléter en P5 — pour l'instant l'installation directe via
-`/plugin install` n'est pas garantie stable.)
+### Install
 
-Workflow utilisateur cible :
+In a Claude Code session:
 
 ```
-/paper-trail:new-sota "Petri nets in music notation"
-  → recherche multi-source (paper-search MCP)
-  → propositions de refs candidates
-  → cascade d'acquisition PDFs
-  → page 1 validation anti-homonymie
-  → rédaction du SOTA avec UNIQUEMENT les refs validées
-
-/paper-trail:audit-sota path/to/SOTA_Existing.md [--purge]
-  → audit des refs citées (existence, accessibilité, hallucination ?)
-  → option --purge : retire automatiquement les hallucinations
-
-/paper-trail:audit-article path/to/Paper.tex [--warn]
-  → audit local PDF↔claim pour chaque citation
-  → option --warn : insère commentaires \todo{} dans une copie .bak
-
-/paper-trail:doctor [--fix]
-  → vérifie 19 invariants de cohérence du registre
-  → option --fix : auto-fix les invariants safe (I4, I6, I9)
+/plugin install file:///path/to/paper-trail
 ```
 
-## Sous-commandes worker B (déjà disponibles)
+Or via marketplace (when published):
 
-Depuis la racine du repo, avec le venv activé :
+```
+/plugin marketplace add roomi-fields
+/plugin install paper-trail
+```
+
+### Configure
+
+Minimum configuration in your shell profile or project `.env`:
 
 ```bash
-python -m pipeline status              # comptes par état
-python -m pipeline run [--ref X]       # pousse les refs actives
-python -m pipeline run --dry-run       # affiche les plans sans muter
-python -m pipeline lint                # invariants R1-R10 (linter du registry)
-python -m pipeline doctor [--fix]      # invariants I1-I19
-python -m pipeline events --since DATE # journal JSONL filtré
-python -m pipeline reactivate-ocr      # re-évalue les awaiting_rtfm_ocr
-```
-
-Tests E2E :
-
-```bash
-python pipeline/tests/test_invariants_synthetic.py  # 19/19 invariants
-python pipeline/tests/test_f1_negative.py           # anti-homonymie F1
-python pipeline/tests/assert_coverage.py            # garde-fou couverture
-```
-
-## Architecture
-
-- **`pipeline/`** : worker B en Python (FSM + cascade + doctor + RTFM
-  bridge). Voir `pipeline/ARCHITECTURE.md` et `pipeline/USAGE.md`.
-- **`lib/`** : helpers PDF acquisition (oa_finder, s2_resolver,
-  archive_org_helper, validate_pdf_content). Sous `lib/shadow/` :
-  Anna's Archive et Sci-Hub, opt-in strict.
-- **`skills/`, `commands/`, `agents/`, `hooks/`** : enveloppe Claude
-  Code (en cours d'intégration).
-- **`adapters/`** : layouts vault (obsidian, flat, zotero stub).
-- **`docs/`** : documentation utilisateur.
-- **`plans/`** : plans de conception et d'exécution.
-
-## Configuration
-
-Variables d'environnement :
-
-```bash
-# Vault & registre (defaults : ~/research_vault et sous-dossiers)
 export RESEARCH_VAULT_PATH=/path/to/your/vault
-export RESEARCH_SOURCES_PATH=$RESEARCH_VAULT_PATH/sources
-export RESEARCH_REGISTRY_PATH=$RESEARCH_SOURCES_PATH/_registry
-
-# Layout du vault (defaults : obsidian)
-export RESEARCH_VAULT_LAYOUT=obsidian   # obsidian | flat | zotero
-
-# Shadow libraries (opt-in strict — voir DISCLAIMER.md)
-export RESEARCH_ENABLE_SHADOW_LIBS=1   # ⚠️ active Anna's Archive + Sci-Hub
-
-# Skip doctor en fin de session
-export RESEARCH_SKIP_END_DOCTOR=1      # désactive le SessionEnd hook
+export RESEARCH_VAULT_LAYOUT=obsidian   # or 'flat' or 'zotero' (V2)
 ```
 
-## Licence et attributions
+For complete configuration, see [`docs/USAGE.md`](docs/USAGE.md).
 
-- **Licence** : MIT (voir `LICENSE`)
-- **Shadow libraries** : opt-in strict, voir `DISCLAIMER.md`
-- **Attributions** : voir `NOTICE.md` (composants importés et patterns
-  inspirés de projets tiers)
+### Try it
 
-## Contribuer
+```
+/paper-trail:status              # overview of the registry
+/paper-trail:new-sota "your research topic"
+/paper-trail:audit-article path/to/your/paper.tex
+```
 
-Ce plugin est sous développement actif pour un usage de recherche
-doctorale. Le code est public sous MIT mais les contributions externes
-ne sont pas encore activement sollicitées tant que la v0.1.0 n'est pas
-stable. Issues bienvenues sur
+## How it works
+
+Three primary workflows, all enforced by the plugin's state machine
+and pre-write hooks:
+
+### Creating a new literature review
+
+```
+/paper-trail:new-sota "topic"
+```
+
+1. Multi-source search across 22 academic platforms via the
+   `paper-search` MCP
+2. You select candidate references from proposed matches
+3. Automated PDF acquisition with mandatory page 1 anti-homonymy
+   validation
+4. Structured notes extracted into each reference's markdown body
+5. Final SOTA cites **only** references that reached
+   `page1_validated` state; rejected candidates are listed with
+   reasons
+
+### Auditing an existing literature review or paper
+
+```
+/paper-trail:audit-sota path/to/SOTA.md [--purge]
+/paper-trail:audit-article path/to/paper.tex [--warn]
+```
+
+Classifies each citation, optionally purges hallucinations from the
+SOTA (with `.bak` backup), or inserts inline warnings adjacent to
+problematic citations in the paper.
+
+### Daily registry maintenance
+
+```
+/paper-trail:cascade <slug>      # acquire a specific reference
+/paper-trail:doctor [--fix]      # check and repair registry consistency
+/paper-trail:reactivate-ocr      # resume OCR-waiting refs
+```
+
+## Architecture overview
+
+```
+User → 9 slash commands → 6 skills → 4 sub-agents → Worker engine
+                                                     ↓
+                                                YAML registry
+```
+
+- **Skills** orchestrate (Claude Code markdown)
+- **Sub-agents** isolate heavy work (PDF reading, search) from main
+  context
+- **Worker engine** (Python) enforces the FSM, runs the cascade,
+  checks invariants — deterministic, testable
+- **YAML registry** is the source of truth (one file per reference,
+  Obsidian-compatible frontmatter)
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full
+diagram and [`pipeline/ARCHITECTURE.md`](pipeline/ARCHITECTURE.md)
+for the worker engine internals.
+
+## Documentation
+
+- [`docs/USAGE.md`](docs/USAGE.md) — daily workflows
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system overview
+- [`docs/LEGAL.md`](docs/LEGAL.md) — licensing and attribution
+- [`DISCLAIMER.md`](DISCLAIMER.md) — shadow libraries opt-in policy
+- [`NOTICE.md`](NOTICE.md) — third-party attributions
+- [`CHANGELOG.md`](CHANGELOG.md) — version history
+
+## Configuration via environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `RESEARCH_VAULT_PATH` | `~/research_vault` | Vault root |
+| `RESEARCH_SOURCES_PATH` | `$VAULT/sources` | PDF directory |
+| `RESEARCH_REGISTRY_PATH` | `$SOURCES/_registry` | YAML registry |
+| `RESEARCH_VAULT_LAYOUT` | `obsidian` | Adapter (obsidian / flat / zotero) |
+| `RESEARCH_ENABLE_SHADOW_LIBS` | unset | Enable Anna's Archive & Sci-Hub (opt-in, see DISCLAIMER) |
+| `RESEARCH_ENABLE_NOTEBOOKLM` | unset | Enable NotebookLM in `sota-writer` phase A |
+| `RESEARCH_SKIP_END_DOCTOR` | unset | Skip the SessionEnd consistency check |
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
+
+## Acknowledgments
+
+This plugin builds on patterns and components from several open-source
+projects in the Claude Code ecosystem. See [`NOTICE.md`](NOTICE.md)
+for detailed attributions.
+
+## Contributing
+
+Issues and pull requests welcome at
 [github.com/roomi-fields/paper-trail/issues](https://github.com/roomi-fields/paper-trail/issues).
-
-## Liens
-
-- Plan d'exécution : `plans/PLUGIN_EXECUTION_PLAN.md`
-- Architecture worker B : `pipeline/ARCHITECTURE.md`
-- Vision système globale : `plans/SYSTEM_ARCHITECTURE.md`
-- Utilisation worker B : `pipeline/USAGE.md`
+The plugin is in active development; structural changes may happen
+between minor versions before v1.0.

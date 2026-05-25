@@ -26,7 +26,7 @@ Add the following object as a new entry in the `plugins` array
     "literature-review",
     "pdf-acquisition",
     "obsidian",
-    "doctoral",
+    "academic",
     "writing"
   ]
 }
@@ -66,9 +66,9 @@ The plugin is then available as `/paper-trail:status`,
 
 ## When to publish
 
-Recommendation : wait for **v0.2** before publishing to the marketplace.
+Recommendation: wait for **v0.2** before publishing to the marketplace.
 v0.1 is functional but the writing pipeline (sota-writer phases A-D
 with all the inverted workflow guards) needs real-world testing before
-exposing to other doctoral students.
+exposing to a wider audience.
 
 Until then, use locally via `/plugin install file:///path/to/paper-trail`.

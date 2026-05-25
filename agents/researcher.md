@@ -102,7 +102,7 @@ If `include_websearch: true`, complement with `WebSearch` for :
   "platforms_queried": ["semantic", "arxiv", "openalex", "crossref"],
   "elapsed_seconds": 18.4,
   "limitations": [
-    "Semantic Scholar may miss some musicology venues",
+    "Semantic Scholar may miss some niche-domain venues",
     "NotebookLM not queried (include_notebooklm=false)"
   ]
 }
@@ -131,7 +131,7 @@ If `include_websearch: true`, complement with `WebSearch` for :
 
 - `mcp__paper-search` coverage varies by platform :
   - Strong : CS, physics, math, biomedical
-  - Weaker : musicology, ethnomusicology, niche humanities
+  - Weaker: niche humanities, ethnographic / domain-specific archives
   - For niche fields, complement with `WebSearch` on
     `jstor.org`, `RILM`, domain-specific archives
 - `mcp__notebooklm` depends on existing notebooks configured by
