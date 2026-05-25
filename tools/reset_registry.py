@@ -59,6 +59,7 @@ def reset_one(ref) -> dict:
         "had_attempts": bool(fm.get("acquisition_attempts")),
         "n_state_history": len(fm.get("state_history") or []),
         "n_cited_in": len(fm.get("cited_in") or []),
+        "retracted_reason": fm.get("retracted_reason"),
     }
 
     # Archive l'ancien state et pdf_path dans des champs legacy_*
@@ -66,6 +67,12 @@ def reset_one(ref) -> dict:
         fm["legacy_state"] = fm["state"]
     if fm.get("pdf_path"):
         fm["legacy_pdf_path"] = fm["pdf_path"]
+    # Archive retracted_reason (cas du remoulin des retracted) pour validation
+    # comparative legacy vs nouveau process
+    if fm.get("retracted_reason"):
+        fm["legacy_retracted_reason"] = fm.pop("retracted_reason")
+    if fm.get("retracted_at"):
+        fm["legacy_retracted_at"] = fm.pop("retracted_at")
 
     # Reset state + tout le travail accumulé
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -105,15 +112,28 @@ def main() -> int:
                    help="Applique les mutations (défaut : dry-run)")
     p.add_argument("--limit", type=int, default=0,
                    help="Cap sur le nombre de refs traitées (0 = pas de limite)")
+    p.add_argument("--include-retracted", action="store_true",
+                   help="Inclut les refs en `retracted` (archive retracted_reason "
+                        "en legacy_retracted_reason, set state=candidate)")
+    p.add_argument("--only-retracted", action="store_true",
+                   help="Ne traite QUE les refs en `retracted` (implique "
+                        "--include-retracted, exclut les autres)")
     args = p.parse_args()
 
     # Inventaire des refs
     targets = []
     retracted_count = 0
+    other_count = 0
     for ref in iter_refs():
-        if ref.state == "retracted":
+        is_retracted = (ref.state == "retracted")
+        if is_retracted:
             retracted_count += 1
-            continue
+            if not (args.include_retracted or args.only_retracted):
+                continue
+        else:
+            other_count += 1
+            if args.only_retracted:
+                continue
         targets.append(ref)
         if args.limit and len(targets) >= args.limit:
             break
@@ -121,9 +141,15 @@ def main() -> int:
     print(f"# Reset registre — {len(targets)} ref(s) à reset")
     print(f"# Mode : {'APPLY (mutations)' if args.apply else 'DRY-RUN'}")
     print()
-    print(f"  - Total refs scannées : {len(targets) + retracted_count}")
-    print(f"  - À reset (non-retracted) : {len(targets)}")
-    print(f"  - Préservées (retracted) : {retracted_count}")
+    print(f"  - Total refs scannées : {retracted_count + other_count}")
+    if args.only_retracted:
+        print(f"  - Mode --only-retracted : seulement les retracted ({len(targets)})")
+    elif args.include_retracted:
+        print(f"  - À reset (toutes) : {len(targets)} "
+              f"(dont {retracted_count} retracted + {other_count} autres)")
+    else:
+        print(f"  - À reset (non-retracted) : {len(targets)}")
+        print(f"  - Préservées (retracted) : {retracted_count}")
     print()
 
     # Distribution des états actuels (pour info)
