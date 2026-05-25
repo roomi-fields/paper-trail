@@ -220,22 +220,29 @@ A) **Script de reset** (livré) :
 - Snapshot tar préalable obligatoire
 - Exécuté 2026-05-25 : 789 reset / 0 échec / 120 retracted préservés
 
-B) **Skill pdf-identifier** (à livrer) :
-- `skills/pdf-identifier/SKILL.md` — workflow inverse de la cascade :
-  pour chaque PDF orphelin sur disque, identifier sa ref via page 1
-  (auteur + titre + année extraits via `pdftotext` + match avec
-  registre)
-- `commands/paper-trail-identify-pdfs.md` — `/paper-trail:identify-pdfs`
-- `agents/pdf-matcher.md` — sub-agent qui matche un PDF candidat
-  contre N refs candidates (similarité titre, match auteur)
-- `tools/identify_orphan_pdfs.py` — scan SOURCES/, extrait page 1 de
-  chaque PDF, propose une association à une ref candidate du registre
+B) **Outil migration identify_pdfs.py** (livré, NON canonique) :
+- `tools/identify_pdfs.py` — Tier 1 : utilise les `legacy_pdf_path`
+  archivés au reset pour proposer des ré-associations. Re-valide
+  page 1 anti-homonymie avec le code actuel.
+- Mode dry-run par défaut. **Non utilisé dans le flow canonique** car
+  l'utilisateur préfère que les 789 candidates passent **toutes** par
+  la cascade neuve.
+- Utile pour : debug, cas où on veut éviter de re-télécharger un PDF
+  spécifique connu, ou pour comparer deux états du registre.
 
-**Pourquoi nécessaire** : après le reset, 789 candidates n'ont plus
-de `pdf_path` mais les PDFs sont toujours sur disque. Sans
-pdf-identifier, lancer `pipeline run --state candidate` va re-télécharger
-des PDFs déjà présents (gaspillage + risque écrasement). pdf-identifier
-permet de pré-associer les PDFs avant la cascade.
+**Décision utilisateur 2026-05-25** : la skill `pdf-identifier`
+(initialement prévue comme étape de migration) est **abandonnée du
+flow canonique**. Le tool `identify_pdfs.py` reste disponible mais
+n'est pas exposé comme commande slash. Le flow canonique post-reset
+est :
+
+```
+pipeline run --state candidate   # cascade 8 sources (10 si shadow)
+```
+
+Tout repasse par le pipeline neuf, même si certains PDFs sont déjà
+sur disque (ils seront probablement re-téléchargés et écrasés). C'est
+le prix de la garantie « 100 % état audité par le nouveau pipeline ».
 
 **Workflow cible** :
 ```
