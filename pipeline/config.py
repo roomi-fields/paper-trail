@@ -1,13 +1,35 @@
-"""Chemins et constantes."""
+"""Chemins et constantes — paramétrables par variables d'environnement.
+
+Variables d'environnement supportées :
+- RESEARCH_VAULT_PATH      racine du vault (défaut : voir _DEFAULT_VAULT)
+- RESEARCH_SOURCES_PATH    dossier sources/PDFs (défaut : VAULT/10_SOURCES)
+- RESEARCH_REGISTRY_PATH   dossier registre (défaut : SOURCES/_registry)
+- RESEARCH_VAULT_LAYOUT    layout adapter (défaut : obsidian)
+- RESEARCH_ENABLE_SHADOW_LIBS  active AA + Sci-Hub (défaut : non)
+- RESEARCH_SKIP_END_DOCTOR     skip le SessionEnd hook (défaut : non)
+
+Pour le projet doctoral musicology-phd, les defaults restent les
+chemins historiques de Romain Peyrichou (WSL2 /mnt/d/Obsidian/...).
+Pour un autre utilisateur, surcharger via les env vars.
+"""
 from pathlib import Path
+import os
 import sys
 
-VAULT = Path("/mnt/d/Obsidian/Articles/Projets/Ontologie musicale")
-SOURCES = VAULT / "10_SOURCES"
-REGISTRY = SOURCES / "_registry"
+# Defaults projet doctoral — surchargeables via env vars
+_DEFAULT_VAULT = Path("/mnt/d/Obsidian/Articles/Projets/Ontologie musicale")
+
+VAULT = Path(os.environ.get("RESEARCH_VAULT_PATH", str(_DEFAULT_VAULT)))
+SOURCES = Path(os.environ.get("RESEARCH_SOURCES_PATH",
+                              str(VAULT / "10_SOURCES")))
+REGISTRY = Path(os.environ.get("RESEARCH_REGISTRY_PATH",
+                               str(SOURCES / "_registry")))
 REFS = REGISTRY / "refs"
 JOURNAL = REGISTRY / "_journal"
 QUARANTINE = REGISTRY / "_quarantine"
+
+# Layout adapter (défaut : obsidian).
+VAULT_LAYOUT = os.environ.get("RESEARCH_VAULT_LAYOUT", "obsidian")
 
 # Helpers locaux au plugin (lib/ à la racine du repo).
 # P0 refactor : helpers copiés depuis source-collector pour self-containment.

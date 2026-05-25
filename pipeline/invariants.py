@@ -432,37 +432,37 @@ def check_I10(ref: Ref) -> list[dict]:
 # I11 — cited_in pointe vers un SOTA/Paper existant (WARN, non auto-fix)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SOTA_PAPER_INDEX_CACHE: dict[Path, set[str]] = {}
+# Cache par (vault_root, layout) — l'index dépend des deux.
+_SOTA_PAPER_INDEX_CACHE: dict[tuple[Path, str], set[str]] = {}
 
 
-def _sota_paper_index(vault_root: Path) -> set[str]:
-    """Index lazy de tous les `.md` du vault (sans filtre de préfixe).
+def _sota_paper_index(vault_root: Path, layout: str | None = None) -> set[str]:
+    """Index lazy de tous les `.md` indexables du vault selon l'adapter.
 
-    Les conventions de nommage dans ce projet sont hétérogènes :
-      - SOTAs : `SOTA_*.md` co-localisés sous `10_SOURCES/<biblio>/`
-      - Papers : `P9alpha_v1_FR.md`, `P10_EN.md`, `P9beta_Draft_VF.md`, … sous
-        `40_OUTPUT/Papers/<P*>/`
-      - Méta-documents : `SOURCES_TRACKING_RULES.md`, etc.
-    On indexe l'ensemble par stem (~1600 fichiers, glob unique en ~0.5s).
-
-    Cache par vault_root pour éviter de re-scanner pour chaque ref.
+    Délègue à `adapter.index_md_files()`. Cache par (vault_root, layout)
+    pour éviter de re-scanner.
     """
-    if vault_root in _SOTA_PAPER_INDEX_CACHE:
-        return _SOTA_PAPER_INDEX_CACHE[vault_root]
-    names: set[str] = set()
-    if vault_root.exists():
-        for p in vault_root.rglob("*.md"):
-            names.add(p.stem)
-    _SOTA_PAPER_INDEX_CACHE[vault_root] = names
+    if layout is None:
+        import os
+        layout = os.environ.get("RESEARCH_VAULT_LAYOUT", "obsidian")
+    key = (vault_root, layout)
+    if key in _SOTA_PAPER_INDEX_CACHE:
+        return _SOTA_PAPER_INDEX_CACHE[key]
+    # Import lazy pour éviter cycle
+    from adapters import get_adapter
+    adapter = get_adapter(layout=layout, vault_root=vault_root)
+    names = adapter.index_md_files()
+    _SOTA_PAPER_INDEX_CACHE[key] = names
     return names
 
 
-def _sota_or_paper_exists(name: str, vault_root: Path = VAULT) -> bool:
-    """Cherche un fichier `.md` avec ce nom (stem) dans le vault (récursif)."""
+def _sota_or_paper_exists(name: str, vault_root: Path = VAULT,
+                          layout: str | None = None) -> bool:
+    """Cherche un fichier `.md` avec ce nom (stem) via l'adapter."""
     if not name:
         return False
     base = name[:-3] if name.endswith(".md") else name
-    return base in _sota_paper_index(vault_root)
+    return base in _sota_paper_index(vault_root, layout)
 
 
 def check_I11(ref: Ref, vault_root: Path = VAULT) -> list[dict]:
@@ -479,7 +479,7 @@ def check_I11(ref: Ref, vault_root: Path = VAULT) -> list[dict]:
         if not _sota_or_paper_exists(name, vault_root):
             violations.append(_viol(
                 "I11", ref.slug, "WARN",
-                f"cited_in:{name!r} introuvable dans Publications/ ou Articles/",
+                f"cited_in:{name!r} introuvable dans le vault",
                 auto_fixable=False,
             ))
     return violations
@@ -490,31 +490,27 @@ def check_I11(ref: Ref, vault_root: Path = VAULT) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def check_I12(refs: list[Ref], vault_root: Path = VAULT) -> list[dict]:
-    """Pour chaque SOTA/Paper du vault, vérifie que les wikilinks vers refs
-    sont déclarés dans cited_in du côté ref.
+    """Pour chaque SOTA/Paper du vault, vérifie que les citations vers refs
+    sont déclarées dans cited_in du côté ref.
 
-    Lecture passive — scan SOTA → ref.
+    Lecture passive — scan SOTA → ref. Délègue à l'adapter pour la
+    découverte des SOTAs et le parsing des citations.
     """
     violations: list[dict] = []
     refs_by_slug = {r.slug: r for r in refs}
 
-    # Scan récursif des SOTA_*.md et Paper_*.md (co-localisés avec les sources :
-    # `10_SOURCES/<biblio>/SOTA_*.md`, `40_OUTPUT/Papers/.../SOTA_*.md`).
     if not vault_root.exists():
         return violations
-    sota_files: list[Path] = []
-    for pattern in ("SOTA_*.md", "Paper_*.md"):
-        sota_files.extend(vault_root.rglob(pattern))
-    for sota_path in sota_files:
-        try:
-            body = sota_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
+
+    # Import lazy pour éviter cycle
+    from adapters import get_adapter
+    adapter = get_adapter(vault_root=vault_root)
+
+    for sota_path in adapter.find_sotas():
         sota_name = sota_path.stem
-        for m in _WIKILINK_RE.finditer(body):
-            slug = m.group(1)
+        for slug in adapter.parse_citations(sota_path):
             if slug not in refs_by_slug:
-                continue  # ce wikilink ne vise pas une ref (peut viser autre chose)
+                continue  # cette citation ne vise pas une ref (autre chose)
             ref = refs_by_slug[slug]
             citations = ref.frontmatter.get("cited_in") or []
             declared_names = {c.get("name") for c in citations
@@ -522,7 +518,8 @@ def check_I12(refs: list[Ref], vault_root: Path = VAULT) -> list[dict]:
             if sota_name not in declared_names:
                 violations.append(_viol(
                     "I12", slug, "WARN",
-                    f"SOTA/Paper {sota_name!r} cite [[{slug}]] mais ref.cited_in ne contient pas {sota_name!r}",
+                    f"SOTA/Paper {sota_name!r} cite ref:{slug} mais ref.cited_in "
+                    f"ne contient pas {sota_name!r}",
                     auto_fixable=False,
                 ))
     return violations
