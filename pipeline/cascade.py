@@ -52,6 +52,7 @@ def _arxiv_id(ref: Ref) -> str | None:
 
 
 def _http_get(url: str, timeout: int = 30, headers: dict | None = None) -> bytes | None:
+    import http.client
     h = {"User-Agent": UA, "Accept": "application/pdf,*/*"}
     if headers:
         h.update(headers)
@@ -59,7 +60,8 @@ def _http_get(url: str, timeout: int = 30, headers: dict | None = None) -> bytes
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read()
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError,
+            http.client.IncompleteRead, http.client.HTTPException):
         return None
 
 
