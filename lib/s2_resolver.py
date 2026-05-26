@@ -77,7 +77,10 @@ def author_match(a_cite, authors_s2):
     a_norm = to_ascii(a_cite).lower()
     for au in authors_s2:
         name = to_ascii(au.get("name", "")).lower()
-        if a_norm in name or name.split()[-1] in a_norm:
+        if not name:
+            continue
+        parts = name.split()
+        if a_norm in name or (parts and parts[-1] in a_norm):
             return True
     return False
 
