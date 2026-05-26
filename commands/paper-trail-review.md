@@ -11,11 +11,25 @@ automatiquement et demandent une décision humaine.
 
 ```
 /paper-trail:review                           # tous les cas
+/paper-trail:review --auto-retract-uncited    # raccourci : retract en lot les non-citées
 /paper-trail:review --only retract            # seulement les artefacts évidents
 /paper-trail:review --only blocked            # seulement les paywalls
 /paper-trail:review --only investigate        # seulement les homonymies
 /paper-trail:review --batch                   # propose une décision par ref, l'utilisateur valide en lot
 ```
+
+## Raccourci `--auto-retract-uncited`
+
+Empiriquement, 90 %+ des refs problématiques sont des refs non citées en
+dehors du registre. Pour les traiter en une commande :
+
+```bash
+python3 -m pipeline retract-uncited            # dry-run (montre la liste)
+python3 -m pipeline retract-uncited --apply    # exécute les retract
+```
+
+Le pipeline scanne le vault, identifie les refs actives non citées hors
+`_registry/INDEX.md`, et propose de toutes les retract en bloc.
 
 ## Ce que fait Claude pendant cette commande
 

@@ -64,13 +64,27 @@ def build_citations_index() -> dict[str, list[tuple[Path, int, str]]]:
     return index
 
 
-def recommend_action(ref) -> str:
-    """Heuristic recommendation based on ref state and attempts."""
+def recommend_action(ref, citations_idx: dict | None = None) -> str:
+    """Heuristic recommendation based on ref state, attempts, and citation context.
+
+    PRIORITY CHECK : if `citations_idx` is provided and the ref is NOT cited
+    in any SOTA or article outside `_registry/INDEX.md`, the recommendation
+    is RETRACT regardless of cascade status. Empirically, a ref with no
+    real citation has no impact on the corpus — retracting frees the
+    registry from drift without losing anything.
+    """
     fm = ref.frontmatter
     state = fm.get("state", "")
     attempts = fm.get("acquisition_attempts") or []
     legacy_state = fm.get("legacy_state", "")
     legacy_retracted = fm.get("legacy_retracted_reason")
+
+    # PRIORITY : ref not cited anywhere outside registry INDEX
+    if citations_idx is not None:
+        all_cites = citations_idx.get(ref.slug, [])
+        real_cites = [c for c in all_cites if "INDEX.md" not in str(c[0])]
+        if not real_cites:
+            return "RETRACT — not cited in any SOTA or article (only in registry INDEX)"
 
     if state == "candidate":
         if not fm.get("uid") and not fm.get("title"):
@@ -205,8 +219,8 @@ def render_ref_section(ref, citations_idx: dict, ord_num: int) -> str:
         sections.append("**Cited in**: _(no occurrences found in vault)_")
         sections.append("")
 
-    # Recommended action
-    rec = recommend_action(ref)
+    # Recommended action (citation check has priority over heuristics)
+    rec = recommend_action(ref, citations_idx=citations_idx)
     sections.append(f"**Recommended action**: {rec}")
     sections.append("")
 

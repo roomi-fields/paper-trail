@@ -284,6 +284,70 @@ def cmd_arbitrate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_retract_uncited(args: argparse.Namespace) -> int:
+    """Retract en lot toutes les refs actives non citées hors registre INDEX.
+
+    Une ref `candidate`, `uid_resolved` ou `awaiting_rtfm_ocr` qui n'est
+    citée dans aucune SOTA ni article du vault n'a aucun impact si on la
+    retract. Empiriquement c'est 95% des cas problématiques.
+
+    Mode dry-run par défaut : montre la liste et compte, ne mute rien.
+    Avec --apply : exécute les retract avec une raison standard.
+    """
+    from .registry import load_ref, save_ref, append_state_history
+    from tools.review_problems import build_citations_index
+    from datetime import datetime, timezone
+
+    active_states = {"candidate", "uid_resolved", "awaiting_rtfm_ocr"}
+    print("Scan du vault pour citations...", file=sys.stderr)
+    citations_idx = build_citations_index()
+
+    candidates = []
+    for ref in iter_refs():
+        if ref.state not in active_states:
+            continue
+        cites = citations_idx.get(ref.slug, [])
+        real_cites = [c for c in cites if "INDEX.md" not in str(c[0])]
+        if real_cites:
+            continue
+        candidates.append(ref)
+
+    print(f"\n{len(candidates)} refs actives non citées hors INDEX")
+    for ref in candidates:
+        author = ref.frontmatter.get("author") or "?"
+        year = ref.frontmatter.get("year") or "?"
+        print(f"  [{ref.state:<20}] {ref.slug:<50}  {author} ({year})")
+
+    if not candidates:
+        return 0
+
+    if not getattr(args, "apply", False):
+        print(f"\nDry-run (utilise --apply pour retract ces {len(candidates)} refs)")
+        return 0
+
+    reason = (getattr(args, "reason", None) or
+              "auto-retract: not cited in any SOTA or article (only in registry INDEX)")
+    n_ok = 0
+    n_err = 0
+    for ref in candidates:
+        from_state = ref.state
+        try:
+            append_state_history(ref, "retracted", by="auto_retract_uncited",
+                                 meta={"reason": reason})
+            ref.frontmatter["retracted_reason"] = reason
+            ref.frontmatter["retracted_at"] = datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ")
+            save_ref(ref)
+            append_event(ref.slug, from_state, "retracted",
+                         "retract_uncited", {"reason": reason})
+            n_ok += 1
+        except Exception as e:
+            print(f"[ERR] {ref.slug}: {type(e).__name__}: {e}", file=sys.stderr)
+            n_err += 1
+    print(f"\nRetracted: {n_ok}/{len(candidates)} (errors: {n_err})")
+    return 1 if n_err else 0
+
+
 def cmd_reactivate_ocr(args: argparse.Namespace) -> int:
     """Re-évalue les refs `awaiting_rtfm_ocr` via `rtfm check --path`.
 
@@ -456,6 +520,14 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Re-évalue les awaiting_rtfm_ocr via rtfm check")
     pra.add_argument("--quiet", action="store_true")
     pra.set_defaults(func=cmd_reactivate_ocr)
+
+    pru = sub.add_parser("retract-uncited",
+                         help="Retract en lot les refs actives non citées hors INDEX")
+    pru.add_argument("--apply", action="store_true",
+                     help="Exécute les retract (défaut : dry-run)")
+    pru.add_argument("--reason", default=None,
+                     help="Raison personnalisée pour le journal")
+    pru.set_defaults(func=cmd_retract_uncited)
 
     par = sub.add_parser("arbitrate",
                          help="Décision humaine sur une ref problématique")

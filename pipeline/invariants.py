@@ -893,6 +893,54 @@ def check_I19(ref: Ref, ctx: dict | None = None) -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# I20 — Ref active non citée hors INDEX du registre (WARN, registry-level)
+# Signal précoce : une ref candidate/uid_resolved/awaiting_rtfm_ocr qui n'est
+# citée dans aucune vraie SOTA ou article devrait être retractée (gain en
+# clarté du registre + économie cascade). Doctor ne retract pas — il flag.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_ACTIVE_STATES_FOR_I20 = {"candidate", "uid_resolved", "awaiting_rtfm_ocr"}
+_WIKILINK_RE_I20 = re.compile(r"\[\[([a-z0-9_]+)\]\]")
+
+
+def check_I20(refs: list[Ref], vault_root: Path = VAULT) -> list[dict]:
+    """Refs actives non citées hors `_registry/INDEX.md`.
+
+    Construit l'index `slug → has_citation_outside_registry` en scannant le
+    vault une seule fois, puis vérifie chaque ref active.
+    """
+    violations: list[dict] = []
+    if not vault_root.exists():
+        return violations
+
+    cited_outside_registry: set[str] = set()
+    for md_path in vault_root.rglob("*.md"):
+        path_str = str(md_path)
+        if "_registry/" in path_str or "INDEX.md" in md_path.name:
+            continue
+        try:
+            text = md_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for m in _WIKILINK_RE_I20.finditer(text):
+            cited_outside_registry.add(m.group(1))
+
+    for ref in refs:
+        if ref.state not in _ACTIVE_STATES_FOR_I20:
+            continue
+        if ref.slug in cited_outside_registry:
+            continue
+        violations.append(_viol(
+            "I20", ref.slug, "WARN",
+            f"ref active ({ref.state}) mais non citée hors registre — "
+            f"candidate à retract via `pipeline arbitrate {ref.slug} "
+            f"--decision retract`",
+            auto_fixable=False,
+        ))
+    return violations
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Registre des checks (pour doctor.run_all_checks)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -917,6 +965,7 @@ REGISTRY_LEVEL_CHECKS: list[tuple[str, Callable[[list[Ref]], list[dict]]]] = [
     ("I2", check_I2),
     ("I12", check_I12),
     ("I13", check_I13),
+    ("I20", check_I20),
 ]
 
 # Couche 5 — Checks ref-level qui prennent un ctx (failures pré-chargées, etc.)
@@ -934,6 +983,7 @@ SEVERITY_BY_INVARIANT = {
     "I1": "ERROR", "I2": "ERROR", "I3": "ERROR", "I5": "ERROR", "I6": "ERROR",
     "I7": "ERROR", "I8": "ERROR", "I10": "ERROR", "I14": "ERROR",
     "I4": "WARN", "I9": "WARN", "I11": "WARN", "I12": "WARN", "I13": "WARN",
+    "I20": "WARN",
     "I15": "INFO",
     # Couche 5
     "I16": "WARN",   # peut devenir ERROR pour file-vanished (cf. check_I16)
