@@ -301,7 +301,13 @@ def try_openalex(ref: Ref) -> tuple[str, dict]:
             data = json.loads(r.read())
     except Exception as e:
         return "failed", {"reason": f"openalex_api:{type(e).__name__}"}
-    work = data.get("results", [data])[0] if "results" in data else data
+    if "results" in data:
+        results = data.get("results") or []
+        if not results:
+            return "no_source", {"reason": "openalex_empty_results"}
+        work = results[0]
+    else:
+        work = data
     oa = (work.get("open_access") or {}).get("oa_url") or work.get("oa_url")
     if not oa:
         return "no_source", {"reason": "no_oa_url"}
