@@ -35,10 +35,17 @@ def rtfm_check_path(path: str | Path, timeout: int = 15) -> dict:
 
     Retourne toujours un dict — en cas d'erreur CLI réelle, dict avec
     `error` et `matches: 0`.
+
+    Le path est résolu en absolu si nécessaire (RTFM CLI ne matche pas
+    sur path relatif).
     """
+    p = Path(path)
+    if not p.is_absolute():
+        from pipeline.config import SOURCES
+        p = SOURCES / p
     proc = subprocess.run(
         ["rtfm", "check", "--db", str(RTFM_DB),
-         "--path", str(path), "--format", "json"],
+         "--path", str(p), "--format", "json"],
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -54,6 +61,48 @@ def rtfm_check_path(path: str | Path, timeout: int = 15) -> dict:
         return {"matches": 0, "error": f"json_decode:{e}",
                 "stdout_head": (proc.stdout or "")[:200]}
     return data
+
+
+def rtfm_first_chunks_text(rtfm_slug: str, n_chunks: int = 10,
+                           timeout: int = 30) -> str:
+    """Récupère les N premiers chunks d'un book RTFM, retourne le texte concaténé.
+
+    Utile pour valider la page 1 d'un PDF scan-only que RTFM a OCRé
+    (le PDF reste scan, mais RTFM a le texte dans sa DB).
+
+    Retourne une chaîne vide en cas d'erreur (rtfm absent, slug invalide,
+    timeout). Le caller décide ce qu'il fait du texte vide (ne valide pas,
+    blocked, etc.).
+    """
+    if not rtfm_slug:
+        return ""
+    try:
+        proc = subprocess.run(
+            ["rtfm", "expand", "--db", str(RTFM_DB),
+             rtfm_slug, "--limit", str(n_chunks)],
+            capture_output=True, text=True, timeout=timeout, check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    # Format text "Expanding ..." puis chunks numérotés "[N] Page X (p.X)"
+    # avec le texte du chunk indenté en dessous. On extrait juste le texte.
+    out = proc.stdout or ""
+    lines = out.splitlines()
+    text_parts: list[str] = []
+    in_chunk = False
+    for line in lines:
+        # Marker de début de chunk : "[N] Page X (p.X)"
+        if line.startswith("[") and "Page " in line:
+            in_chunk = True
+            continue
+        if in_chunk:
+            # Le contenu du chunk est indenté (4 espaces) ou commence directement
+            stripped = line.strip()
+            if stripped:
+                text_parts.append(stripped)
+    return " ".join(text_parts)
 
 
 def rtfm_status_for_ref(pdf_path: str | Path, sources_root: Path | None = None) -> tuple[str, dict]:

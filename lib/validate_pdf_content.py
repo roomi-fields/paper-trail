@@ -414,6 +414,49 @@ def validate_pdf_against_ref(pdf_path: Path, expected_author: str = "",
     return True, f"validated [on_domain={len(on)} off={len(off)}]"
 
 
+def validate_text_against_ref(text: str, expected_author: str = "",
+                              expected_year: str = "",
+                              expected_title: str = "") -> tuple[bool, str]:
+    """Variante de validate_pdf_against_ref qui prend un texte au lieu d'un PDF.
+
+    Cas d'usage : valider la page 1 d'un PDF scan-only quand l'OCR a été
+    fait par RTFM (qui stocke le texte dans sa DB, pas dans le PDF).
+    On valide alors sur le texte OCR fourni par RTFM (premiers chunks).
+
+    Pas de probe_pdf_health ici — on suppose que le caller a déjà
+    vérifié que le PDF existe et que RTFM a effectivement OCRé.
+    """
+    if not text or len(text) < 50:
+        return False, "ocr_text_too_short"
+
+    off = detect_off_domain(text)
+    on = detect_on_domain(text)
+
+    # Reject net si off-domain sans on-domain
+    if off and not on:
+        return False, f"bad_match_off_domain {off[:3]} no_on_domain_keywords"
+
+    # Reject si majorité off-domain
+    if off and len(off) > len(on):
+        return False, f"bad_match_majority_off_domain {off[:3]} vs_on={on[:3]}"
+
+    # Check auteur si fourni
+    if expected_author:
+        first_name = expected_author.split()[0] if expected_author.split() else ""
+        if len(first_name) >= 3 and first_name.lower() not in text.lower():
+            if not on:
+                return False, f"author_{first_name}_not_in_ocr_text and no_on_domain"
+
+    # Check titre via mots distinctifs si fourni
+    if expected_title:
+        distinctive = distinctive_title_words(expected_title)
+        tl = text.lower()
+        if distinctive and not any(w in tl for w in distinctive):
+            return False, f"no_distinctive_title_word_in_ocr (expected ≥1 from {distinctive[:5]})"
+
+    return True, f"validated_ocr_text [on_domain={len(on)} off={len(off)}]"
+
+
 def quick_check(pdf_path: Path) -> str:
     """Retourne juste le premier off-domain match (ou empty) pour usage rapide."""
     text = extract_page1(pdf_path)

@@ -492,14 +492,31 @@ def awaiting_rtfm_ocr_dispatch(ref: Ref) -> TransitionResult:
             meta={"info": info},
         )
 
-    # verdict == "ok" : OCR done, indexé. Re-tenter validate_pdf_against_ref.
+    # verdict == "ok" : OCR done, indexé. Le PDF reste scan-only sur disque
+    # (RTFM ne réécrit pas le fichier). On valide page 1 via le texte OCR
+    # extrait depuis l'index RTFM, pas via pdftotext sur le PDF brut.
     import validate_pdf_content as v
-    is_ok, reason = v.validate_pdf_against_ref(
-        pdf_abs,
-        expected_author=ref.frontmatter.get("author") or "",
-        expected_year=str(ref.frontmatter.get("year") or ""),
-        expected_title=ref.frontmatter.get("title") or "",
-    )
+    from .rtfm_helper import rtfm_first_chunks_text
+    rtfm_slug = info.get("rtfm_slug") or ""
+    ocr_text = rtfm_first_chunks_text(rtfm_slug, n_chunks=10) if rtfm_slug else ""
+    if ocr_text:
+        # Validation page 1 sur le texte OCR de RTFM
+        is_ok, reason = v.validate_text_against_ref(
+            ocr_text,
+            expected_author=ref.frontmatter.get("author") or "",
+            expected_year=str(ref.frontmatter.get("year") or ""),
+            expected_title=ref.frontmatter.get("title") or "",
+        )
+    else:
+        # Fallback : pas de texte OCR récupérable, retomber sur la validation
+        # classique (qui échouera probablement si le PDF est scan-only)
+        is_ok, reason = v.validate_pdf_against_ref(
+            pdf_abs,
+            expected_author=ref.frontmatter.get("author") or "",
+            expected_year=str(ref.frontmatter.get("year") or ""),
+            expected_title=ref.frontmatter.get("title") or "",
+        )
+        reason = f"{reason} [fallback_no_rtfm_chunks]"
     log = {
         "at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "post_rtfm_ocr": True,
