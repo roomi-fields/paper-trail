@@ -220,6 +220,8 @@ def _check_local_pdf(ref: Ref) -> tuple[str, dict] | None:
         "pdfium_timeout", "extraction_timeout",
     )
 
+    rejected = set(ref.frontmatter.get("rejected_sha256") or [])
+
     for source_key, abs_p in candidates:
         # Vérifie validité PDF (magic bytes + taille minimale)
         try:
@@ -229,10 +231,15 @@ def _check_local_pdf(ref: Ref) -> tuple[str, dict] | None:
         if not _is_valid_pdf(data):
             continue  # corrupt or wrong format, let cascade retry
 
-        # Validation page 1 in-place
-        is_ok, reason = _validate_page1(abs_p, ref)
         import hashlib
         sha = hashlib.sha256(data).hexdigest()
+        # Si ce sha est déjà rejeté (page1_failed précédent), ne pas le
+        # re-proposer comme local — sinon boucle infinie pdf_acquired↔needs_reacq.
+        if sha in rejected:
+            continue
+
+        # Validation page 1 in-place
+        is_ok, reason = _validate_page1(abs_p, ref)
         rel_path = str(abs_p.relative_to(SOURCES))
         info = {
             "pdf_path": rel_path,

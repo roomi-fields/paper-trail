@@ -382,13 +382,20 @@ def pdf_acquired_dispatch(ref: Ref) -> TransitionResult:
                                     "probe_ok_validate_passed",
                                     meta={"probe": category,
                                           "quarantine_cleaned": n_clean})
-        # Validation page 1 KO → quarantaine + retour cascade
-        # On bascule en needs_reacquisition pour relancer la cascade.
+        # Validation page 1 KO → ajouter sha au rejected_sha256 pour que la
+        # prochaine cascade ne re-pioche pas exactement le même fichier
+        # (anti-boucle infinie sur PDF homonymique déjà sur disque).
+        current_sha = ref.frontmatter.get("pdf_sha256")
+        if current_sha:
+            rejected = ref.frontmatter.setdefault("rejected_sha256", [])
+            if current_sha not in rejected:
+                rejected.append(current_sha)
         ref.frontmatter.setdefault("doctor_flags", []).append(
             f"page1_failed_post_acquisition:{reason}"
         )
         append_state_history(ref, "needs_reacquisition", by="worker_b",
-                             meta={"probe": category, "validation_failure": reason})
+                             meta={"probe": category, "validation_failure": reason,
+                                   "rejected_sha_added": bool(current_sha)})
         save_ref(ref)
         return TransitionResult(True, "pdf_acquired", "needs_reacquisition",
                                 "page1_validation_failed",
