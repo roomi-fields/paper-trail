@@ -433,25 +433,48 @@ def _yaml_quote(s: str) -> str:
 # Substitution texte → [[wikilink]]
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _wikilink_target_for_slug(slug: str) -> str:
+    """Pour un slug du registre, retourne la cible du wikilink à insérer
+    dans la SOTA.
+
+    Règle :
+    - Si la ref a un `pdf_path` → cible = stem du fichier PDF (le wikilink
+      pointe alors directement sur le PDF, lecture immédiate dans Obsidian).
+    - Sinon → cible = slug registre (fallback pour les refs sans PDF
+      encore acquis).
+
+    Le clic dans Obsidian doit ouvrir le PDF, pas la fiche de suivi
+    technique du registre.
+    """
+    ref_path = REFS / f"{slug}.md"
+    if ref_path.exists():
+        ref = load_ref(ref_path)
+        if ref:
+            pdf_path = ref.frontmatter.get("pdf_path")
+            if pdf_path:
+                return Path(pdf_path).stem
+    return slug
+
+
 def _substitute_to_wikilink(
     sota_path: Path,
     citation: ParsedCitation,
     slug: str,
 ) -> bool:
-    """Remplace le texte brut de la citation par `[[slug]] —` dans le SOTA.
+    """Remplace le texte brut de la citation par `[[target]] —` dans le SOTA.
 
-    Stratégie : recherche-remplace de la première occurrence du `raw`.
-    On préfixe par `[[slug]] —` plutôt que de tout substituer, pour
-    préserver le format bibliographique humain :
+    La cible est le stem du PDF si la ref en a un (le wikilink ouvre alors
+    directement le PDF), sinon le slug registre (fallback).
+
+    Préserve le format bibliographique humain :
 
     Avant :
       - Heydari et al., "BeatNet: ...", ISMIR 2021
 
     Après :
-      - [[heydari_2021_beatnet]] — Heydari et al., "BeatNet: ...", ISMIR 2021
+      - [[Heydari_2021_BeatNet_...]] — Heydari et al., "BeatNet: ...", ISMIR 2021
 
-    Si `[[slug]]` est déjà présent juste avant le raw (idempotence),
-    on ne modifie pas.
+    Idempotent : si la cible (PDF stem) est déjà devant le raw, ne fait rien.
 
     Retourne True si une substitution a été faite.
     """
@@ -462,14 +485,15 @@ def _substitute_to_wikilink(
     raw = citation.raw.strip()
     if not raw:
         return False
-    # Idempotence : si `[[slug]]` est déjà juste avant le raw, skip
-    if f"[[{slug}]]" in text:
-        idx = text.find(f"[[{slug}]]")
-        # Cherche le raw juste après le wikilink
-        if idx >= 0 and raw in text[idx:idx + len(f"[[{slug}]]") + len(raw) + 10]:
+    target = _wikilink_target_for_slug(slug)
+    # Idempotence : si `[[target]]` est déjà juste avant le raw, skip
+    wikilink = f"[[{target}]]"
+    if wikilink in text:
+        idx = text.find(wikilink)
+        if idx >= 0 and raw in text[idx:idx + len(wikilink) + len(raw) + 10]:
             return False
     # Remplace la première occurrence
-    new_text = text.replace(raw, f"[[{slug}]] — {raw}", 1)
+    new_text = text.replace(raw, f"{wikilink} — {raw}", 1)
     if new_text == text:
         return False
     sota_path.write_text(new_text, encoding="utf-8")
