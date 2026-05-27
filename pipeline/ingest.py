@@ -386,6 +386,13 @@ def _normalize_title(title: str) -> str:
 # Cache du registre chargé (pour éviter iter_refs() × N sessions)
 _REGISTRY_CACHE: Optional[list] = None
 
+# Connexion SQLite persistante read-only sur la DB RTFM (H3).
+# Évite de relancer `subprocess.run(["rtfm", "search", ...])` × N citations
+# (chaque démarrage subprocess coûte ~5-10s en cold start ; SQLite direct
+# coûte ~50-500ms par requête après la première connexion).
+_RTFM_SQLITE_CONN = None  # sqlite3.Connection | None
+_RTFM_SQLITE_TRIED = False
+
 
 def _get_registry_cached() -> list:
     """Charge toutes les refs une seule fois pour la session."""
@@ -395,19 +402,47 @@ def _get_registry_cached() -> list:
     return _REGISTRY_CACHE
 
 
+def _rtfm_sqlite_conn():
+    """Ouvre (et met en cache) la connexion SQLite read-only sur la DB RTFM.
+
+    Retourne None si la DB est indisponible ou si l'ouverture a déjà échoué
+    pendant la session.
+    """
+    global _RTFM_SQLITE_CONN, _RTFM_SQLITE_TRIED
+    if _RTFM_SQLITE_TRIED:
+        return _RTFM_SQLITE_CONN
+    _RTFM_SQLITE_TRIED = True
+    from .config import RTFM_DB
+    if not RTFM_DB.exists():
+        return None
+    try:
+        import sqlite3
+        _RTFM_SQLITE_CONN = sqlite3.connect(
+            f"file:{RTFM_DB}?mode=ro", uri=True, timeout=5,
+        )
+    except Exception:
+        _RTFM_SQLITE_CONN = None
+    return _RTFM_SQLITE_CONN
+
+
+def _sanitize_fts5_query(q: str) -> str:
+    """Nettoie une query pour FTS5 : supprime les caractères réservés
+    (`"`, `(`, `)`, `*`) qui pourraient casser le MATCH.
+    """
+    return re.sub(r"[\"()\*]", " ", q).strip()
+
+
 def _rtfm_prefilter_registry_slugs(
     citation: ParsedCitation, limit: int = 10
 ) -> list[str]:
-    """RTFM-first : utilise `rtfm search` pour pré-filtrer les refs registre
-    candidates, au lieu d'itérer sur les 900+ refs.
+    """RTFM-first : pré-filtre les refs registre candidates via FTS5.
 
-    Retourne la liste des slugs des refs registre matchant la query
-    (auteur + année + premier mot du titre).
-
-    Fallback : si RTFM indisponible ou erreur, retourne [] (l'appelant
-    fait alors fallback sur le scan complet).
+    Stratégie :
+    1. SQLite direct sur `chunks_fts` (connexion persistante read-only) —
+       ~50-500ms par requête après warmup.
+    2. Si SQLite indisponible, fallback subprocess `rtfm search` (~5-10s).
+    3. Si tout échoue, retourne [] (l'appelant scanne tout le registre).
     """
-    from .config import RTFM_DB
     parts = []
     lastname = _extract_first_author_lastname(citation.author)
     if lastname and lastname != "unknown":
@@ -420,11 +455,51 @@ def _rtfm_prefilter_registry_slugs(
             parts.append(first_word)
     if not parts:
         return []
-    query = " ".join(parts)
+    raw_query = _sanitize_fts5_query(" ".join(parts))
+    if not raw_query:
+        return []
 
+    # Niveau 1 : SQLite direct via FTS5 + ranking bm25
+    con = _rtfm_sqlite_conn()
+    if con is not None:
+        try:
+            rows = con.execute(
+                """
+                WITH fts AS (
+                  SELECT rowid, rank
+                    FROM chunks_fts
+                   WHERE chunks_fts MATCH ?
+                   ORDER BY rank
+                   LIMIT ?
+                )
+                SELECT b.filename, MIN(fts.rank) AS score
+                  FROM fts
+                  JOIN chunks c ON fts.rowid = c.id
+                  JOIN books b ON c.book_id = b.id
+                 WHERE b.filename LIKE '%_registry/refs/%'
+                 GROUP BY b.id
+                 ORDER BY score
+                 LIMIT ?
+                """,
+                (raw_query, limit * 10, limit),
+            ).fetchall()
+            slugs: list[str] = []
+            seen = set()
+            for filename, _score in rows:
+                slug = Path(filename).stem
+                if slug not in seen:
+                    seen.add(slug)
+                    slugs.append(slug)
+            if slugs:
+                return slugs
+        except Exception:
+            pass  # fallback subprocess
+
+    # Niveau 2 (fallback) : subprocess rtfm search
+    from .config import RTFM_DB
     try:
         proc = subprocess.run(
-            ["rtfm", "search", query, "--db", str(RTFM_DB),
+            ["rtfm", "search", raw_query, "--db", str(RTFM_DB),
              "--limit", str(limit * 3), "-f", "json"],
             capture_output=True, text=True, timeout=30, check=False,
         )
@@ -436,8 +511,7 @@ def _rtfm_prefilter_registry_slugs(
             json.JSONDecodeError):
         return []
 
-    # Filtre les hits dans _registry/refs/ et extrait le slug
-    slugs: list[str] = []
+    slugs = []
     seen = set()
     for r in results:
         f = r.get("file") or r.get("path") or ""
