@@ -433,31 +433,37 @@ def _yaml_quote(s: str) -> str:
 # Substitution texte → [[wikilink]]
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _wikilink_target_for_slug(slug: str) -> str:
-    """Pour un slug du registre, retourne la cible du wikilink à insérer
-    dans la SOTA.
+def _wikilink_for_slug(slug: str) -> str:
+    """Pour un slug du registre, retourne le wikilink complet à insérer.
 
-    Règle :
-    - Si la ref a un `pdf_path` → cible = nom de fichier complet **avec
-      extension** (`Heydari_2021_BeatNet.pdf`). Obsidian par défaut
-      résout `[[name]]` vers un `.md` — pour cibler un PDF il faut
-      inclure `.pdf` dans le wikilink, sinon Obsidian crée un `.md`
-      vide au clic.
-    - Sinon → cible = slug registre (fallback pour les refs sans PDF
-      encore acquis).
+    Format Obsidian : `[[<target>|<alias>]]`
+    - target = nom de fichier complet avec extension (Heydari_2021_BeatNet_..._joi.pdf)
+      → clic ouvre le PDF
+    - alias = forme courte lisible (`heydari_2021`) → affichage compact
 
-    Le clic dans Obsidian doit ouvrir le PDF, pas la fiche de suivi
-    technique du registre.
+    Si la ref n'a pas de pdf_path : fallback `[[slug]]` (pointe vers la
+    fiche registre).
     """
     ref_path = REFS / f"{slug}.md"
-    if ref_path.exists():
-        ref = load_ref(ref_path)
-        if ref:
-            pdf_path = ref.frontmatter.get("pdf_path")
-            if pdf_path:
-                # .name préserve l'extension (.pdf, .epub, etc.)
-                return Path(pdf_path).name
-    return slug
+    if not ref_path.exists():
+        return f"[[{slug}]]"
+    ref = load_ref(ref_path)
+    if not ref:
+        return f"[[{slug}]]"
+
+    pdf_path = ref.frontmatter.get("pdf_path")
+    if not pdf_path:
+        return f"[[{slug}]]"
+
+    target = Path(pdf_path).name  # avec extension
+    # Alias court : lastname_year (extrait du slug registre qui est déjà
+    # de la forme lastname_year_word)
+    parts = slug.split("_")
+    if len(parts) >= 2:
+        alias = f"{parts[0]}_{parts[1]}"
+    else:
+        alias = slug
+    return f"[[{target}|{alias}]]"
 
 
 def _substitute_to_wikilink(
@@ -489,14 +495,13 @@ def _substitute_to_wikilink(
     raw = citation.raw.strip()
     if not raw:
         return False
-    target = _wikilink_target_for_slug(slug)
-    # Idempotence : si `[[target]]` est déjà juste avant le raw, skip
-    wikilink = f"[[{target}]]"
+    wikilink = _wikilink_for_slug(slug)
+    # Idempotence : si le wikilink complet (target|alias) est déjà juste
+    # avant le raw, on ne re-substitue pas.
     if wikilink in text:
         idx = text.find(wikilink)
         if idx >= 0 and raw in text[idx:idx + len(wikilink) + len(raw) + 10]:
             return False
-    # Remplace la première occurrence
     new_text = text.replace(raw, f"{wikilink} — {raw}", 1)
     if new_text == text:
         return False
