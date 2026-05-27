@@ -964,7 +964,23 @@ def _wikilink_for_slug(slug: str) -> str:
     return f"[[{target}|{alias}]]"
 
 
-_LIST_MARKER_RE = re.compile(r"^(\s*(?:[-*+]|\d+\.|\|\s*\d+\s*\|)\s+)")
+_LIST_MARKER_RE = re.compile(r"^(\s*(?:[-*+]|\d+\.|\|\s*\d+\s*\||\|)\s+)")
+_WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
+
+
+def _line_already_has_lastname_wikilink(line: str, lastname_anorm: str) -> bool:
+    """True si la ligne contient déjà un wikilink (`[[target]]` ou
+    `[[target|alias]]`) dont la target ou l'alias contient le lastname
+    (comparaison alphanum, tolère le tiret de Vijay-Shanker).
+    """
+    if not lastname_anorm:
+        return False
+    for m in _WIKILINK_RE.finditer(line):
+        target = m.group(1).lower()
+        target_anorm = re.sub(r"[^a-z0-9]", "", target)
+        if lastname_anorm in target_anorm:
+            return True
+    return False
 
 
 def _prefix_line_with_wikilink(line: str, wikilink: str) -> str:
@@ -1016,30 +1032,41 @@ def _substitute_to_wikilink(
     wikilink = _wikilink_for_slug(slug)
     raw_norm = _normalize_for_match(raw) if raw else ""
 
-    # Tier 1 : match strict (multi-occurrences + protection idempotente)
-    if raw and raw in text:
-        sentinel = f"___WIKILINKED___{slug}___WIKILINKED___"
-        already = f"{wikilink} — {raw}"
-        protected = text.replace(already, sentinel)
-        substituted = protected.replace(raw, f"{wikilink} — {raw}")
-        new_text = substituted.replace(sentinel, already)
-        if new_text != text:
-            sota_path.write_text(new_text, encoding="utf-8")
-            return True
-
-    # Tier 2 : ancrage scoré ligne par ligne
+    # Calcul du lastname normalisé (alphanum) pour l'idempotence T2
     lastname = _extract_first_author_lastname(citation.author)
-    if not lastname or lastname == "unknown":
-        return False
-    lastname_lc = lastname.lower()
-    year_str = re.sub(r"[^0-9]", "", citation.year or "")[:4]
-    title_word = _title_first_significant_word(citation.title or "")
-    title_word_lc = title_word.lower() if title_word and title_word != "untitled" else ""
+    lastname_lc = lastname.lower() if lastname and lastname != "unknown" else ""
+    lastname_anorm = re.sub(r"[^a-z0-9]", "", lastname_lc)
 
     def _alphanum(s: str) -> str:
         return re.sub(r"[^a-z0-9]", "", s.lower())
 
-    lastname_anorm = _alphanum(lastname_lc)  # tolère le tiret dans la ligne
+    # Tier 1 : match strict du raw — mais en respectant l'idempotence par
+    # lastname (si la ligne contenant le raw a déjà un wikilink pour ce
+    # lastname, on ne double-substitue pas).
+    if raw and raw in text:
+        already_wikilinked = False
+        for line in text.splitlines():
+            if raw in line and _line_already_has_lastname_wikilink(
+                line, lastname_anorm
+            ):
+                already_wikilinked = True
+                break
+        if not already_wikilinked:
+            sentinel = f"___WIKILINKED___{slug}___WIKILINKED___"
+            already = f"{wikilink} — {raw}"
+            protected = text.replace(already, sentinel)
+            substituted = protected.replace(raw, f"{wikilink} — {raw}")
+            new_text = substituted.replace(sentinel, already)
+            if new_text != text:
+                sota_path.write_text(new_text, encoding="utf-8")
+                return True
+
+    # Tier 2 : ancrage scoré ligne par ligne (besoin du lastname)
+    if not lastname_lc:
+        return False
+    year_str = re.sub(r"[^0-9]", "", citation.year or "")[:4]
+    title_word = _title_first_significant_word(citation.title or "")
+    title_word_lc = title_word.lower() if title_word and title_word != "untitled" else ""
 
     best_line: Optional[str] = None
     best_score = 0.0
@@ -1047,8 +1074,11 @@ def _substitute_to_wikilink(
         stripped = line.strip()
         if len(stripped) < 6:
             continue
-        if slug in line:
-            continue  # déjà ce wikilink sur cette ligne
+        # Idempotence forte (T2) : skip si un wikilink existe déjà sur la
+        # ligne avec ce lastname (ex: [[sipser_0000_introduction]] est là,
+        # on n'ajoute pas un autre [[sipser_2012_...]] à côté).
+        if _line_already_has_lastname_wikilink(line, lastname_anorm):
+            continue
         line_lc = line.lower()
         line_anorm = _alphanum(line_lc)
         # Required minimum : lastname doit apparaître (normalisé alphanum
