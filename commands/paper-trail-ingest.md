@@ -44,10 +44,32 @@ un SOTA conforme (wikilinks vers refs registre).
    Avec `--apply` : commit git auto, crée refs candidates, substitue
    le texte par `[[wikilinks]]`.
 
-6. **Présente le récap** : N nouvelles refs créées, N réutilisées,
-   N substitutions, N skipped (low confidence), N erreurs.
+6. **Présente le récap intermédiaire** : N nouvelles refs créées, N
+   réutilisées, N substitutions, N skipped (low confidence), N erreurs.
 
-7. **Si --apply réussit**, propose à l'utilisateur :
+7. **Sweep automatique des textbooks incomplets** (uniquement si `--apply`) :
+   - Liste les candidates :
+     ```bash
+     python3 -m pipeline resolve-textbooks --list > /tmp/textbook_candidates_<sota_stem>.json
+     ```
+   - Si le JSON est non-vide, invoque le sub-agent `textbook-resolver` :
+     ```
+     Agent(subagent_type="textbook-resolver",
+           prompt=<contenu de /tmp/textbook_candidates_<sota_stem>.json>)
+     ```
+   - Sauve le JSON retourné dans `/tmp/textbook_decisions_<sota_stem>.json`,
+     applique :
+     ```bash
+     python3 -m pipeline resolve-textbooks \
+         --apply-from /tmp/textbook_decisions_<sota_stem>.json
+     ```
+   - Aucune décision humaine intermédiaire : le sub-agent applique ses
+     règles documentées (`agents/textbook-resolver.md`) — merge / complete /
+     blocked. Les `blocked` restent visibles via `pipeline doctor`.
+
+8. **Récap final consolidé** : ingestion + sweep textbooks.
+
+9. **Si --apply réussit**, propose à l'utilisateur :
    - Lancer la cascade pour les nouvelles refs :
      `pipeline run --loop` (étape 2 du pipeline)
    - Ou enchaîner sur l'audit-sota pour valider claim ↔ PDF.
