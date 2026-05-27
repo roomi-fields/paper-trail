@@ -438,8 +438,11 @@ def _wikilink_target_for_slug(slug: str) -> str:
     dans la SOTA.
 
     Règle :
-    - Si la ref a un `pdf_path` → cible = stem du fichier PDF (le wikilink
-      pointe alors directement sur le PDF, lecture immédiate dans Obsidian).
+    - Si la ref a un `pdf_path` → cible = nom de fichier complet **avec
+      extension** (`Heydari_2021_BeatNet.pdf`). Obsidian par défaut
+      résout `[[name]]` vers un `.md` — pour cibler un PDF il faut
+      inclure `.pdf` dans le wikilink, sinon Obsidian crée un `.md`
+      vide au clic.
     - Sinon → cible = slug registre (fallback pour les refs sans PDF
       encore acquis).
 
@@ -452,7 +455,8 @@ def _wikilink_target_for_slug(slug: str) -> str:
         if ref:
             pdf_path = ref.frontmatter.get("pdf_path")
             if pdf_path:
-                return Path(pdf_path).stem
+                # .name préserve l'extension (.pdf, .epub, etc.)
+                return Path(pdf_path).name
     return slug
 
 
