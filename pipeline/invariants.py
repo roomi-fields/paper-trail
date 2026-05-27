@@ -902,6 +902,26 @@ def check_I19(ref: Ref, ctx: dict | None = None) -> list[dict]:
 _ACTIVE_STATES_FOR_I20 = {"candidate", "uid_resolved", "awaiting_rtfm_ocr"}
 _WIKILINK_RE_I20 = re.compile(r"\[\[([a-z0-9_]+)\]\]")
 
+# Patterns pour I21 : citations en texte libre détectables dans un SOTA
+# (sections candidates pour ingestion).
+_BIBLIO_HEADER_RE_I21 = re.compile(
+    r"^(#{2,4})\s+(.*?\b("
+    r"r[ée]f[ée]rence|bibliograph|sources?|literature|citation|"
+    r"works?\s+cited|further\s+reading"
+    r")\b.*)$",
+    re.IGNORECASE | re.MULTILINE,
+)
+# Une ligne qui ressemble à une citation : commence par "- " ou "* "
+# ou un chiffre, contient une année 4 digits, et a une longueur
+# significative (> 40 chars).
+_CITATION_LINE_RE_I21 = re.compile(
+    r"^\s*(?:[-*+]|\d+\.)\s+.*\b(19|20)\d{2}\b.+$",
+    re.MULTILINE,
+)
+# Pour exclure les lignes qui ont DÉJÀ un wikilink → considérées
+# comme ingérées
+_HAS_WIKILINK_RE = re.compile(r"\[\[[a-z0-9_]+\]\]")
+
 
 def check_I20(refs: list[Ref], vault_root: Path = VAULT) -> list[dict]:
     """Refs actives non citées hors `_registry/INDEX.md`.
@@ -941,6 +961,147 @@ def check_I20(refs: list[Ref], vault_root: Path = VAULT) -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# I21 — SOTA contient citation texte libre non ingérée (ERROR, registry-level)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def check_I21(refs: list[Ref], vault_root: Path = VAULT) -> list[dict]:
+    """SOTA contient au moins une citation en texte libre (line bibliographique
+    style "Auteur (YYYY)" ou "Auteur, Y. & B., Title, Conf YYYY") qui n'a
+    pas de wikilink [[slug]] adjacent.
+
+    Heuristique : pour chaque SOTA, scanner les sections candidates
+    (mêmes patterns que adapter.extract_bibliography_sections). Si une
+    ligne contient une année 4 digits et > 40 chars sans wikilink → I21.
+
+    INGEST doit absorber ces citations pour les rendre conformes.
+    """
+    violations: list[dict] = []
+    if not vault_root.exists():
+        return violations
+
+    try:
+        from adapters import get_adapter
+        adapter = get_adapter(vault_root=vault_root)
+    except Exception:
+        return violations
+
+    for sota_path in adapter.find_sotas():
+        try:
+            sections = adapter.extract_bibliography_sections(sota_path)
+        except Exception:
+            continue
+        for section in sections:
+            if section.is_excluded:
+                continue
+            text = section.raw_text
+            free_text_lines = []
+            for line in text.splitlines():
+                if _CITATION_LINE_RE_I21.match(line):
+                    if not _HAS_WIKILINK_RE.search(line):
+                        free_text_lines.append(line.strip()[:80])
+            if free_text_lines:
+                try:
+                    rel = sota_path.relative_to(vault_root)
+                except ValueError:
+                    rel = sota_path
+                violations.append(_viol(
+                    "I21", f"sota:{sota_path.stem}", "ERROR",
+                    f"{rel} contient {len(free_text_lines)} citation(s) en "
+                    f"texte libre dans la section {section.header!r}. "
+                    f"Lancer `/paper-trail:ingest {sota_path}` pour ingérer.",
+                    auto_fixable=False,
+                ))
+    return violations
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# I22 — Wikilink dans SOTA pointe vers ref absente du registre (ERROR)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def check_I22(refs: list[Ref], vault_root: Path = VAULT) -> list[dict]:
+    """Wikilink `[[slug]]` dans un SOTA pointe vers un slug absent du registre.
+
+    Ne se déclenche que sur des slugs qui ressemblent à une ref (pattern
+    `author_YYYY_word`) — pas sur les wikilinks vers d'autres SOTAs.
+    """
+    violations: list[dict] = []
+    if not vault_root.exists():
+        return violations
+    try:
+        from adapters import get_adapter
+        adapter = get_adapter(vault_root=vault_root)
+    except Exception:
+        return violations
+
+    registry_slugs = {ref.slug for ref in refs}
+    # Pattern d'un slug de ref : <lastname>_<year>_<word>
+    REF_SLUG_RE = re.compile(r"^[a-z][a-z0-9]*_(19|20)\d{2}_[a-z0-9_]+$")
+
+    for sota_path in adapter.find_sotas():
+        try:
+            citations = adapter.parse_citations(sota_path)
+        except Exception:
+            continue
+        for slug in set(citations):
+            if not REF_SLUG_RE.match(slug):
+                continue  # ce n'est pas un slug de ref
+            if slug not in registry_slugs:
+                try:
+                    rel = sota_path.relative_to(vault_root)
+                except ValueError:
+                    rel = sota_path
+                violations.append(_viol(
+                    "I22", f"sota:{sota_path.stem}", "ERROR",
+                    f"{rel} cite [[{slug}]] mais ce slug est absent du "
+                    f"registre. Créer la ref via `/paper-trail:ingest` ou "
+                    f"corriger le wikilink.",
+                    auto_fixable=False,
+                ))
+    return violations
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# I23 — Wikilink dans SOTA pointe vers ref retracted (WARN)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def check_I23(refs: list[Ref], vault_root: Path = VAULT) -> list[dict]:
+    """Wikilink dans un SOTA pointe vers une ref `retracted`. À corriger
+    (purge le wikilink ou ré-écrire la phrase qui le cite).
+    """
+    violations: list[dict] = []
+    if not vault_root.exists():
+        return violations
+    try:
+        from adapters import get_adapter
+        adapter = get_adapter(vault_root=vault_root)
+    except Exception:
+        return violations
+
+    retracted = {r.slug for r in refs if r.state == "retracted"}
+    if not retracted:
+        return violations
+
+    for sota_path in adapter.find_sotas():
+        try:
+            citations = adapter.parse_citations(sota_path)
+        except Exception:
+            continue
+        for slug in set(citations):
+            if slug in retracted:
+                try:
+                    rel = sota_path.relative_to(vault_root)
+                except ValueError:
+                    rel = sota_path
+                violations.append(_viol(
+                    "I23", f"sota:{sota_path.stem}", "WARN",
+                    f"{rel} cite [[{slug}]] mais cette ref est `retracted`. "
+                    f"Retirer le wikilink ou ré-écrire la phrase.",
+                    auto_fixable=False,
+                ))
+    return violations
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Registre des checks (pour doctor.run_all_checks)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -966,6 +1127,9 @@ REGISTRY_LEVEL_CHECKS: list[tuple[str, Callable[[list[Ref]], list[dict]]]] = [
     ("I12", check_I12),
     ("I13", check_I13),
     ("I20", check_I20),
+    ("I21", check_I21),
+    ("I22", check_I22),
+    ("I23", check_I23),
 ]
 
 # Couche 5 — Checks ref-level qui prennent un ctx (failures pré-chargées, etc.)
@@ -983,7 +1147,8 @@ SEVERITY_BY_INVARIANT = {
     "I1": "ERROR", "I2": "ERROR", "I3": "ERROR", "I5": "ERROR", "I6": "ERROR",
     "I7": "ERROR", "I8": "ERROR", "I10": "ERROR", "I14": "ERROR",
     "I4": "WARN", "I9": "WARN", "I11": "WARN", "I12": "WARN", "I13": "WARN",
-    "I20": "WARN",
+    "I20": "WARN", "I23": "WARN",
+    "I21": "ERROR", "I22": "ERROR",
     "I15": "INFO",
     # Couche 5
     "I16": "WARN",   # peut devenir ERROR pour file-vanished (cf. check_I16)

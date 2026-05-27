@@ -297,6 +297,117 @@ def cmd_arbitrate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ingest(args: argparse.Namespace) -> int:
+    """Ingest les citations d'un SOTA (ou de tous les SOTAs) dans le registre.
+
+    Convertit les citations en texte libre en wikilinks `[[slug]]` après
+    avoir créé les refs correspondantes dans le registre.
+
+    Modes :
+      - `pipeline ingest --init-git` : initialise git dans le vault
+      - `pipeline ingest <sota> --extract-only` : liste les sections
+        bibliographiques candidates (pour orchestration par Claude)
+      - `pipeline ingest <sota> --citations-json <path>` : applique
+        l'ingestion avec un JSON déjà parsé par le sub-agent
+      - `pipeline ingest --all --dry-run` : scan tous les SOTAs, montre
+        ce qui serait ingéré, ne mute rien
+    """
+    from . import ingest as ingest_mod
+    from adapters import get_adapter
+    from .config import VAULT
+    from pathlib import Path
+
+    # Mode 1 : init git
+    if getattr(args, "init_git", False):
+        return 0 if ingest_mod.init_git_vault(VAULT) else 1
+
+    # Mode 2 : extract-only (liste les sections)
+    if getattr(args, "extract_only", False):
+        sota = Path(args.sota)
+        if not sota.exists():
+            print(f"[ERR] SOTA introuvable : {sota}", file=sys.stderr)
+            return 2
+        adapter = get_adapter()
+        sections = adapter.extract_bibliography_sections(sota)
+        out = [
+            {
+                "header": s.header,
+                "is_excluded": s.is_excluded,
+                "start_offset": s.start_offset,
+                "end_offset": s.end_offset,
+                "raw_text": s.raw_text,
+            }
+            for s in sections
+        ]
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        return 0
+
+    # Mode 3 : ingest avec JSON de citations déjà parsées
+    if args.citations_json:
+        sota = Path(args.sota)
+        json_path = Path(args.citations_json)
+        if not sota.exists():
+            print(f"[ERR] SOTA introuvable : {sota}", file=sys.stderr)
+            return 2
+        if not json_path.exists():
+            print(f"[ERR] JSON citations introuvable : {json_path}",
+                  file=sys.stderr)
+            return 2
+        apply = bool(getattr(args, "apply", False))
+        if apply:
+            if not ingest_mod._ensure_git_backup(
+                VAULT, f"paper-trail ingest before modifying {sota.name}"
+            ):
+                print("[ERR] backup git impossible. Use --init-git d'abord "
+                      "ou skip --apply pour dry-run.", file=sys.stderr)
+                return 2
+        result = ingest_mod.ingest_citations_from_json(
+            sota, json_path, apply=apply
+        )
+        print(f"\n=== Ingest result : {sota.name} ===")
+        print(f"  apply={apply}")
+        print(f"  new_refs    : {len(result.new_refs)}")
+        for s in result.new_refs[:20]:
+            print(f"    + {s}")
+        print(f"  reused_refs : {len(result.reused_refs)}")
+        for s in result.reused_refs[:20]:
+            print(f"    = {s}")
+        print(f"  substitutions: {result.substitutions}")
+        if result.skipped_low_confidence:
+            print(f"  skipped (low confidence) : "
+                  f"{len(result.skipped_low_confidence)}")
+        if result.errors:
+            print(f"  errors : {len(result.errors)}")
+            for e in result.errors[:5]:
+                print(f"    ! {e}")
+        return 1 if result.errors else 0
+
+    # Mode 4 : --all (batch sur tout le vault, dry-run/apply)
+    if getattr(args, "all_sotas", False):
+        adapter = get_adapter()
+        sotas = list(adapter.find_sotas())
+        print(f"Scan de {len(sotas)} SOTAs pour sections bibliographiques...")
+        total_sections = 0
+        sotas_with_sections = 0
+        for sota in sotas:
+            sections = adapter.extract_bibliography_sections(sota)
+            non_excl = [s for s in sections if not s.is_excluded]
+            if non_excl:
+                sotas_with_sections += 1
+                total_sections += len(non_excl)
+                print(f"  {sota.stem:<60} {len(non_excl)} section(s)")
+        print(f"\n→ {sotas_with_sections}/{len(sotas)} SOTAs avec sections "
+              f"candidates ({total_sections} sections au total)")
+        print("\nProchaine étape : orchestrer le sub-agent citation-parser "
+              "via /paper-trail:ingest-all (slash command) qui invoquera "
+              "le sub-agent pour parser chaque section, puis appellera "
+              "cette CLI avec le JSON résultat.")
+        return 0
+
+    print("[ERR] Mode inconnu. Voir `pipeline ingest --help`.", file=sys.stderr)
+    return 2
+
+
 def cmd_retract_uncited(args: argparse.Namespace) -> int:
     """Retract en lot toutes les refs actives non citées hors registre INDEX.
 
@@ -533,6 +644,22 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Re-évalue les awaiting_rtfm_ocr via rtfm check")
     pra.add_argument("--quiet", action="store_true")
     pra.set_defaults(func=cmd_reactivate_ocr)
+
+    pin = sub.add_parser("ingest",
+                         help="Ingest citations d'un SOTA dans le registre")
+    pin.add_argument("sota", nargs="?", default=None,
+                     help="Chemin du SOTA à ingérer (sauf --init-git ou --all)")
+    pin.add_argument("--init-git", action="store_true",
+                     help="Initialise git dans le vault (1ère fois)")
+    pin.add_argument("--extract-only", action="store_true",
+                     help="Liste les sections bibliographiques en JSON sur stdout, n'ingère rien")
+    pin.add_argument("--citations-json",
+                     help="Chemin d'un JSON de citations déjà parsées par le sub-agent")
+    pin.add_argument("--apply", action="store_true",
+                     help="Applique l'ingestion (crée refs + substitue). Sans : dry-run.")
+    pin.add_argument("--all", dest="all_sotas", action="store_true",
+                     help="Scan tous les SOTAs du vault (dry-run par défaut)")
+    pin.set_defaults(func=cmd_ingest)
 
     pru = sub.add_parser("retract-uncited",
                          help="Retract en lot les refs actives non citées hors INDEX")
