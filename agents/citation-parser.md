@@ -2,7 +2,7 @@
 name: citation-parser
 description: Sub-agent that parses bibliographic sections and inline citations from SOTA / article text. Takes raw text (a section header + content, or an inline excerpt) and returns structured JSON `[{author, year, title, doi?, venue?, raw}]`. Isolates the LLM extraction from the main agent context. Invoke from the INGEST pipeline whenever a SOTA's bibliographic section or paragraph needs structured citation extraction.
 tools: [Read, Write]
-version: 2
+version: 3
 ---
 
 # Sub-agent : citation-parser
@@ -189,6 +189,32 @@ Field semantics :
 
     This rule replaces the older "return ONE record with the most
     complete mention" which was destructive for short mentions.
+
+12. **EXHAUSTIVE — every textual apparition is a separate record.**
+    Iterate the entire `input_text` and produce ONE record per
+    apparition of each citation pattern, even when the same work is
+    cited 3, 4, 5+ times in different contexts. Examples of patterns
+    that MUST each produce their own record :
+
+    - `Author YYYY` brief mention in prose : `Voir Valiant 1975` → 1 record
+    - `Author YYYY` in table cell : `| Younger 1967 |` → 1 record
+    - `Author1-Author2 YYYY` compound : `Joshi-Vijay-Shanker 1987` → 1 record
+    - `Author1 et al. YYYY` : `Seki et al. 1991` → 1 record
+    - `(Author YYYY)` parenthetical : `(Satta 1994)` → 1 record
+    - `Author1 & Author2 YYYY` ampersand : `Vijay-Shanker & Weir 1994` → 1 record
+    - Full bibliographic entry in Sources section → 1 record
+    - Mention in "Local" / "À procurer" bullet list → 1 record
+    - Mention in "Liste finale" / "Priorité 1" table → 1 record
+
+    If the same work `Younger 1967` appears 5 times in the text in
+    different forms (`Younger 1967`, `Younger, D.H. 1967 *Recognition...*`,
+    `| Younger 1967 |`, etc.), you produce **5 records**, each with its
+    own literal `raw`. The pipeline dedups for registry resolution but
+    substitutes wikilinks at all 5 locations.
+
+    **Anti-pattern** : do NOT return one "canonical" record per work and
+    silently drop the brief mentions. This was the v2 failure mode that
+    left 25+ mentions un-wikilinked in real SOTAs.
 
 ## Return discipline
 

@@ -82,14 +82,14 @@ def test_unit_build_statut_categories_order():
         ),
     ]
     md = build_statut_section(entries)
-    # ordre validated avant missing
-    pos_validated = md.find("### Sources validées")
-    pos_missing = md.find("### Sources non créées")
-    assert pos_validated < pos_missing
-    # ordre dans validated : A avant B (par lastname)
-    pos_a = md.find("source-a-2019")
-    pos_b = md.find("source-b-2020")
-    assert pos_a < pos_b
+    # Format minimaliste : pas de headings séparés. L'ordre des entrées
+    # doit respecter (catégorie, lastname, year). A (validated) avant
+    # C (missing). A avant B dans validated.
+    pos_a = md.find("^source-a-2019")
+    pos_b = md.find("^source-b-2020")
+    pos_c = md.find("^source-c-2021")
+    assert pos_a < pos_b  # A avant B (validated, par lastname)
+    assert pos_b < pos_c  # validated avant missing
 
 
 def test_unit_build_statut_skip_empty_categories():
@@ -102,9 +102,10 @@ def test_unit_build_statut_skip_empty_categories():
         ),
     ]
     md = build_statut_section(entries)
-    assert "### Sources non créées" in md
-    assert "### Sources validées" not in md
-    assert "### Sources rétractées" not in md
+    # Format minimaliste : pas de headings séparés mais l'entrée X
+    # (catégorie missing) doit être présente avec son ancre block.
+    assert "^source-x-2020" in md
+    assert "X 2020" in md
 
 
 def test_T_idempotence_statut_section():
@@ -129,7 +130,7 @@ def test_T_idempotence_statut_section():
 
 
 def test_unit_anchor_in_section():
-    """L'ancre HTML doit être présente et bien formée."""
+    """L'ancre Obsidian block-ref doit être présente."""
     entries = [
         StatutEntry(
             slug=None, anchor="source-foo-2020", lastname="Foo",
@@ -138,8 +139,8 @@ def test_unit_anchor_in_section():
         ),
     ]
     md = build_statut_section(entries)
-    assert '<a id="source-foo-2020"></a>' in md
-    assert "**Foo (2020)**" in md
+    assert "^source-foo-2020" in md
+    assert "Foo 2020" in md
 
 
 def _run_all():

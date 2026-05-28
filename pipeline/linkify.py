@@ -24,14 +24,16 @@ STATUT_BEGIN = "<!-- paper-trail:statut:begin -->"
 STATUT_END = "<!-- paper-trail:statut:end -->"
 STATUT_HEADING = "## Statut des sources"
 
-# Catégories en ordre stable
-STATUT_CATEGORIES = [
-    ("validated", "### Sources validées (page1 OK, PDF présent)"),
-    ("in_progress", "### Sources en cours d'acquisition"),
-    ("blocked", "### Sources bloquées (intervention humaine)"),
-    ("retracted", "### Sources rétractées"),
-    ("missing", "### Sources non créées (mention détectée, ref pas encore créée)"),
-]
+# Mapping (state effectif) → libellé court pour l'utilisateur.
+# Format minimaliste : une seule ligne par ref, status humain, sans
+# métadonnées techniques.
+STATUT_LABELS = {
+    "validated": "DL + validée",
+    "in_progress": "en attente d'acquisition",
+    "blocked": "bloquée (humain)",
+    "retracted": "rétractée",
+    "missing": "ref pas encore créée",
+}
 
 
 @dataclass
@@ -94,45 +96,44 @@ def _strip_existing_statut(text: str) -> str:
 
 
 def build_statut_section(entries: list[StatutEntry]) -> str:
-    """Génère le markdown de la section Statut. Ordre stable par catégorie."""
+    """Génère la section Statut en format minimaliste.
+
+    Une ligne par ref :
+      `- <Auteur> <année> — <status court>  ^source-<lastname>-<year>`
+
+    Le `^source-...` en fin de ligne est une block-ref Obsidian
+    standard, ciblable par un wikilink `[[fichier#^source-foo-2020]]`.
+    Idempotent (régénéré entre les marqueurs HTML).
+    """
     lines = [STATUT_BEGIN, "", STATUT_HEADING, ""]
-    lines.append(
-        "_Section générée automatiquement par `/paper-trail:linkify`. "
-        "Ne pas éditer manuellement entre les marqueurs._"
+
+    # Tri stable : par catégorie (validated → in_progress → blocked →
+    # retracted → missing) puis par lastname/year.
+    cat_order = ["validated", "in_progress", "blocked", "retracted", "missing"]
+    sorted_entries = sorted(
+        entries,
+        key=lambda e: (
+            cat_order.index(e.category) if e.category in cat_order else 99,
+            e.lastname.lower(),
+            e.year,
+        ),
     )
+
+    for e in sorted_entries:
+        # Status court humain (libellé par catégorie + précision si dispo)
+        label = STATUT_LABELS.get(e.category, e.state)
+        if e.category == "retracted" and e.reason.startswith("merged_into:"):
+            target = e.reason.split(":", 1)[1].strip()
+            label = f"rétractée (utilise [[{target}]])"
+        elif e.category == "blocked" and e.reason:
+            # extrait raison courte si dispo
+            label = f"bloquée — {e.reason[:60]}"
+
+        # Auteur + année concis
+        author_short = f"{e.lastname} {e.year}".strip()
+        lines.append(f"- {author_short} — {label}  ^{e.anchor}")
+
     lines.append("")
-
-    by_cat: dict[str, list[StatutEntry]] = {c: [] for c, _ in STATUT_CATEGORIES}
-    for e in entries:
-        by_cat.setdefault(e.category, []).append(e)
-
-    for cat_key, heading in STATUT_CATEGORIES:
-        es = sorted(
-            by_cat.get(cat_key, []),
-            key=lambda x: (x.lastname.lower(), x.year),
-        )
-        if not es:
-            continue
-        lines.append(heading)
-        lines.append("")
-        for e in es:
-            if e.pdf_path:
-                ref_link = (
-                    f"[[{Path(e.pdf_path).name}|"
-                    f"{e.lastname.lower()}_{e.year}]]"
-                )
-            elif e.slug:
-                ref_link = f"[[{e.slug}]]"
-            else:
-                ref_link = f"`{e.lastname.lower()}_{e.year}`"
-            title_short = (e.title or "")[:80]
-            lines.append(
-                f'- <a id="{e.anchor}"></a> **{e.lastname} ({e.year})** '
-                f'— {title_short} · state=`{e.state}` · {e.reason} · '
-                f'{ref_link}'
-            )
-        lines.append("")
-
     lines.append(STATUT_END)
     return "\n".join(lines)
 
@@ -156,7 +157,10 @@ def _substitute_with_anchor(
     if not raw or raw not in text:
         return False
 
-    wikilink = f"[[#{anchor}|{lastname.lower()}_{year or '0000'}]]"
+    # Block-ref Obsidian : `[[#^source-foo-2020|alias]]` pointe vers la
+    # ligne marquée `^source-foo-2020` (vs `<a id>` HTML qui ne marche
+    # pas avec les wikilinks Obsidian).
+    wikilink = f"[[#^{anchor}|{lastname.lower()}_{year or '0000'}]]"
     lastname_anorm = re.sub(r"[^a-z0-9]", "", (lastname or "").lower())
 
     new_lines = []
