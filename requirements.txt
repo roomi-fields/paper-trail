@@ -3,5 +3,7 @@ cloudscraper>=1.2.71
 beautifulsoup4>=4.12
 pyyaml>=6.0
 lxml>=4.9
+# pour cascade_sources (Semantic Scholar text extraction)
+pypdf>=4.0
 # Optional: pour Anna's Archive /slow_download (Turnstile)
 # playwright>=1.40
