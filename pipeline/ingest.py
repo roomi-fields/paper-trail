@@ -150,27 +150,46 @@ def _ensure_git_backup(vault_root: Path, message: str) -> bool:
     # Commit les changements en cours avant la modification INGEST.
     # Timeout généreux : git add . peut prendre plusieurs minutes sur
     # un gros vault Obsidian la 1ère fois.
-    try:
-        subprocess.run(
-            ["git", "-C", str(vault_root), "add", "."],
-            check=True, capture_output=True, timeout=600,
-        )
-        result = subprocess.run(
-            ["git", "-C", str(vault_root), "commit", "-m", message,
-             "--allow-empty"],
-            capture_output=True, timeout=120, text=True,
-        )
-        if result.returncode != 0:
-            print(f"[WARN] git commit a échoué : {result.stderr[:200]}",
-                  flush=True)
+    # Retry sur git lock (`.git/index.lock`) qui peut survenir en
+    # batch parallèle (plusieurs ingest simultanés).
+    import time
+    last_err = ""
+    for attempt in range(5):
+        try:
+            r1 = subprocess.run(
+                ["git", "-C", str(vault_root), "add", "."],
+                capture_output=True, timeout=600,
+            )
+            if r1.returncode != 0:
+                last_err = r1.stderr.decode("utf-8", errors="replace")[:200]
+                if "index.lock" in last_err or "Unable to create" in last_err:
+                    # Lock parallèle, retry avec backoff
+                    time.sleep(2 + attempt * 3)
+                    continue
+                print(f"[WARN] git add : {last_err}", flush=True)
+                return False
+            r2 = subprocess.run(
+                ["git", "-C", str(vault_root), "commit", "-m", message,
+                 "--allow-empty"],
+                capture_output=True, timeout=120, text=True,
+            )
+            if r2.returncode != 0:
+                last_err = r2.stderr[:200]
+                if "index.lock" in last_err:
+                    time.sleep(2 + attempt * 3)
+                    continue
+                print(f"[WARN] git commit : {last_err}", flush=True)
+                return False
+            return True
+        except subprocess.TimeoutExpired:
+            print("[ERR] git commit timeout", flush=True)
             return False
-    except subprocess.TimeoutExpired:
-        print("[ERR] git commit timeout (10 min dépassées)", flush=True)
-        return False
-    except FileNotFoundError:
-        print("[ERR] git n'est pas installé sur ce système", flush=True)
-        return False
-    return True
+        except FileNotFoundError:
+            print("[ERR] git n'est pas installé sur ce système", flush=True)
+            return False
+    print(f"[ERR] git backup : 5 tentatives échouées. Dernier : {last_err}",
+          flush=True)
+    return False
 
 
 def init_git_vault(vault_root: Path) -> bool:
