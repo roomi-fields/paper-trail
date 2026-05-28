@@ -115,7 +115,7 @@ def test_T2_apply_purge_strips_and_replaces(tmp_path):
     # Cas D technical : strip
     assert "20_ATLAS/canvas_dev.canvas" not in content
     # Cas D' non-bib : strip
-    assert "[[IR_Spec_Preliminaire]]" not in content
+    assert "[[ZZZ_Fake_NonBibSlug_Test]]" not in content
     # Légitime : préservé
     assert "[[earley_1970_efficient]]" in content
 

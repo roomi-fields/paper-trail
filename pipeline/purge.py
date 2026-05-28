@@ -148,9 +148,15 @@ def _best_sibling_for_zero_year(
 def _classify_wikilink(
     target: str, alias: Optional[str],
     by_slug: dict, by_lastname: dict,
+    vault_md_stems: Optional[set] = None,
 ) -> Optional[PurgeAction]:
     """Pour un wikilink `[[target]]` ou `[[target|alias]]`, retourne une
     PurgeAction si invalide, None si légitime.
+
+    `vault_md_stems` : set des stems (nom sans extension) de tous les
+    fichiers `.md` du vault. Si le target ou son stem y est, le wikilink
+    pointe vers un vrai fichier du vault (cross-référence légitime) et
+    NE doit PAS être classé non-bib.
     """
     # Cas D : path technique (préfixe répertoire ou extension)
     if any(target.startswith(p) for p in _TECHNICAL_PATH_PREFIXES):
@@ -164,6 +170,20 @@ def _classify_wikilink(
     else:
         base = Path(target).stem
     base_lower = base.lower()
+
+    # Cross-référence légitime : le wikilink pointe vers un VRAI fichier du
+    # vault (autre SOTA, MOC, note Atlas, etc.). On NE flag PAS comme non-bib.
+    if vault_md_stems is not None:
+        if base in vault_md_stems or Path(target).stem in vault_md_stems:
+            # On laisse passer la suite (cas A/B/C peuvent encore s'appliquer
+            # si c'est aussi un slug retracted/zero-year/ugly, ce qui serait
+            # bizarre mais correct).
+            # Mais on saute le test non-bib en mémorisant qu'il est dans le vault.
+            _is_in_vault = True
+        else:
+            _is_in_vault = False
+    else:
+        _is_in_vault = False
 
     # Cas C : suffixe moche _2_3_4
     if _UGLY_SUFFIX_RE.search(base_lower):
@@ -194,8 +214,9 @@ def _classify_wikilink(
             )
         # Sinon : on laisse, le sweep textbook-resolver s'en occupera
 
-    # Cas D' : slug non-bib (TitleCase fichier projet)
-    if _looks_non_bibliographic(base):
+    # Cas D' : slug non-bib (TitleCase fichier projet) — SAUF si
+    # cross-référence vers un vrai fichier du vault (autre SOTA, MOC, etc.)
+    if _looks_non_bibliographic(base) and not _is_in_vault:
         return PurgeAction(0, "", PurgeReason.NON_BIBLIO_SLUG, None)
 
     return None  # wikilink légitime
@@ -225,6 +246,18 @@ def plan_purge(
     by_slug = {r.slug: r for r in refs}
     by_lastname = _build_sibling_index(refs)
 
+    # Index des stems des fichiers .md du vault, pour distinguer les
+    # cross-références légitimes (vers autres SOTAs, MOCs, notes Atlas)
+    # des slugs non-bibliographiques cassés.
+    vault_md_stems: set[str] = set()
+    try:
+        from .config import VAULT
+        if VAULT.exists():
+            for p in VAULT.rglob("*.md"):
+                vault_md_stems.add(p.stem)
+    except Exception:
+        pass
+
     # Détecte les bornes de la section Statut pour la skipper (zone
     # auto-générée par linkify, régénérable, traçabilité voulue des
     # refs retracted listées avec leur slug).
@@ -249,7 +282,10 @@ def plan_purge(
             target = m.group(1)
             alias = m.group(2)
             raw = m.group(0)
-            action = _classify_wikilink(target, alias, by_slug, by_lastname)
+            action = _classify_wikilink(
+                target, alias, by_slug, by_lastname,
+                vault_md_stems=vault_md_stems,
+            )
             if action is not None:
                 action.line_no = line_no
                 action.raw_wikilink = raw

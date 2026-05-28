@@ -9,7 +9,7 @@ Cette fixture teste les 6 cas de purge :
 - Cas B zero-year avec sibling : [[hopcroft_0000_old]] → [[hopcroft_2001_intro]].
 - Cas C suffixe moche : [[sipser_2012_intro_2_3_4]] doit être stripped.
 - Cas D technical path : [[20_ATLAS/canvas_dev.canvas]] doit être stripped.
-- Cas D' non-bibliographic slug : [[IR_Spec_Preliminaire]] doit être stripped.
+- Cas D' non-bibliographic slug : [[ZZZ_Fake_NonBibSlug_Test]] doit être stripped.
 
 ## Références
 
@@ -18,5 +18,5 @@ Cette fixture teste les 6 cas de purge :
 - [[hopcroft_0000_old]] -- Hopcroft textbook
 - [[sipser_2012_intro_2_3_4]] -- Sipser dup
 - [[20_ATLAS/canvas_dev.canvas]] -- tâche projet
-- [[IR_Spec_Preliminaire]] -- spec interne
+- [[ZZZ_Fake_NonBibSlug_Test]] -- spec interne
 - [[earley_1970_efficient]] -- Earley (LÉGITIME, ne pas toucher)
