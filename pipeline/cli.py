@@ -706,6 +706,111 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     return 2
 
 
+def cmd_identify(args: argparse.Namespace) -> int:
+    """Première passe (read-only) : produit un rapport d'identification.
+
+    Pour chaque mention parsée, résout DOI + reconcile registry + retourne
+    le verdict (reuse / create / retracted / low conf). Ne mute rien.
+
+    Usage :
+      pipeline identify <sota> --citations-json <path>
+      pipeline identify <sota> --citations-json <path> --json
+    """
+    from . import identify as id_mod
+    from .ingest import ingest_citations_from_json, ParsedCitation
+    from pathlib import Path as _Path
+
+    sota = _Path(args.sota)
+    if not sota.exists():
+        print(f"[ERR] SOTA introuvable : {sota}", file=sys.stderr)
+        return 2
+
+    citations_json_path = _Path(args.citations_json)
+    if not citations_json_path.exists():
+        print(f"[ERR] JSON citations introuvable : {citations_json_path}",
+              file=sys.stderr)
+        return 2
+
+    raw_json = citations_json_path.read_text(encoding="utf-8")
+    data = json.loads(raw_json)
+    citations = [ParsedCitation(**c) for c in data]
+    report = id_mod.identify_sota(sota, citations)
+
+    if getattr(args, "json_output", False):
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(id_mod.report_to_text(report))
+    return 1 if report.errors else 0
+
+
+def cmd_linkify(args: argparse.Namespace) -> int:
+    """Quatrième passe : insère les wikilinks + section Statut.
+
+    Pour chaque mention :
+      - ref validée + PDF → wikilink direct vers le PDF
+      - sinon → wikilink vers ancre dans section ## Statut des sources
+
+    Usage :
+      pipeline linkify <sota> --citations-json <path>           # dry-run
+      pipeline linkify <sota> --citations-json <path> --apply
+    """
+    from . import identify as id_mod
+    from . import linkify as link_mod
+    from .ingest import ParsedCitation, _ensure_git_backup
+    from .config import VAULT
+    from pathlib import Path as _Path
+
+    sota = _Path(args.sota)
+    if not sota.exists():
+        print(f"[ERR] SOTA introuvable : {sota}", file=sys.stderr)
+        return 2
+
+    citations_json_path = _Path(args.citations_json)
+    if not citations_json_path.exists():
+        print(f"[ERR] JSON citations introuvable : {citations_json_path}",
+              file=sys.stderr)
+        return 2
+
+    raw_json = citations_json_path.read_text(encoding="utf-8")
+    data = json.loads(raw_json)
+    citations = [ParsedCitation(**c) for c in data]
+    report = id_mod.identify_sota(sota, citations)
+
+    apply = bool(getattr(args, "apply", False))
+    if apply:
+        if not _ensure_git_backup(VAULT,
+                                  f"paper-trail linkify before {sota.name}"):
+            print("[ERR] backup git impossible. Annulation.", file=sys.stderr)
+            return 2
+
+    result = link_mod.linkify_sota(sota, report, apply=apply)
+
+    if getattr(args, "json_output", False):
+        from dataclasses import asdict
+        out = {
+            "sota": str(sota),
+            "apply": apply,
+            "n_pdf_wikilinks": result.n_pdf_wikilinks,
+            "n_anchor_wikilinks": result.n_anchor_wikilinks,
+            "total_substitutions": result.total_substitutions(),
+            "n_statut_entries": len(result.statut_entries),
+            "statut_entries": [asdict(e) for e in result.statut_entries],
+            "errors": result.errors,
+        }
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+    else:
+        print(f"\n=== Linkify : {sota.name} ===")
+        print(f"  Mode: {'APPLY' if apply else 'DRY-RUN'}")
+        print(f"  PDF wikilinks    : {result.n_pdf_wikilinks}")
+        print(f"  Anchor wikilinks : {result.n_anchor_wikilinks}")
+        print(f"  Statut entries   : {len(result.statut_entries)}")
+        if result.errors:
+            print(f"  Errors           : {len(result.errors)}")
+            for e in result.errors[:3]:
+                print(f"    {e}")
+    return 1 if result.errors else 0
+
+
 def cmd_purge(args: argparse.Namespace) -> int:
     """Nettoie les wikilinks invalides d'un SOTA.
 
@@ -1093,6 +1198,27 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Sortie JSON structurée pour scripting")
     ppu.set_defaults(func=cmd_purge)
 
+    pid = sub.add_parser("identify",
+                         help="Rapport d'identification d'un SOTA (read-only)")
+    pid.add_argument("sota", help="Chemin du SOTA à analyser")
+    pid.add_argument("--citations-json", required=True,
+                     help="JSON de citations parsées (sub-agent citation-parser)")
+    pid.add_argument("--json", dest="json_output", action="store_true",
+                     help="Sortie JSON structurée pour scripting")
+    pid.set_defaults(func=cmd_identify)
+
+    pli = sub.add_parser("linkify",
+                         help="Insère wikilinks (PDF/ancre) + section "
+                              "## Statut des sources")
+    pli.add_argument("sota", help="Chemin du SOTA à linkifier")
+    pli.add_argument("--citations-json", required=True,
+                     help="JSON de citations parsées (sub-agent citation-parser)")
+    pli.add_argument("--apply", action="store_true",
+                     help="Applique (mute le SOTA + backup git)")
+    pli.add_argument("--json", dest="json_output", action="store_true",
+                     help="Sortie JSON structurée")
+    pli.set_defaults(func=cmd_linkify)
+
     pru = sub.add_parser("retract-uncited",
                          help="Retract en lot les refs actives non citées hors INDEX")
     pru.add_argument("--apply", action="store_true",
@@ -1153,7 +1279,7 @@ def build_parser() -> argparse.ArgumentParser:
 # Sous-commandes qui mutent le registre — protégées par WorkerLock pour
 # éviter 2 sessions concurrentes. Les read-only (status, lint, doctor, events)
 # ne sont PAS wrappées.
-_MUTATING_CMDS = {"run", "reactivate-ocr", "purge"}
+_MUTATING_CMDS = {"run", "reactivate-ocr", "purge", "linkify"}
 
 
 def main(argv: list[str] | None = None) -> int:
