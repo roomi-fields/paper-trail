@@ -200,4 +200,78 @@ def run_acquire_for_sota(
                 break
             # Else : continue boucle, le state a changé
 
+        # Fallback paper-search MCP (P6.1) : si après la boucle la ref
+        # est toujours en candidate / uid_resolved et qu'on n'a pas réussi
+        # à acquérir un PDF via la cascade native, on tente les 13 sources
+        # additionnelles couvertes par paper-search MCP.
+        if apply and slug not in batch.succeeded and slug not in batch.blocked:
+            try:
+                ref = load_ref(ref_path)
+                if ref and ref.state in ("candidate", "uid_resolved"):
+                    if _try_paper_search_fallback(ref, ref_path):
+                        batch.succeeded.append(slug)
+                        # Retire de pending si présent
+                        batch.pending = [s for s in batch.pending if s != slug]
+            except Exception as e:
+                batch.errors.append(
+                    f"{slug}: paper_search fallback crash {type(e).__name__}: {e}"
+                )
+
     return batch
+
+
+def _try_paper_search_fallback(ref, ref_path: Path) -> bool:
+    """Tente d'acquérir un PDF via paper-search MCP (13 sources
+    additionnelles) en fallback de la cascade native. Si succès, applique
+    la transition vers `pdf_acquired` puis tente la validation page 1.
+
+    Retourne True si la ref atteint `page1_validated`.
+    """
+    from .paper_search_acquire import try_paper_search_download
+    from .ingest import _try_validate_page1, ParsedCitation
+    from .registry import save_ref, append_state_history
+    from .config import SOURCES
+    import hashlib
+
+    author = ref.frontmatter.get("author", "")
+    year = str(ref.frontmatter.get("year", ""))
+    title = ref.frontmatter.get("title", "")
+    if not title:
+        return False
+
+    SOURCES.mkdir(parents=True, exist_ok=True)
+    result = try_paper_search_download(author, year, title, SOURCES)
+    if result is None:
+        return False
+    pdf_path, source = result
+
+    # Valide page 1 anti-homonymy
+    citation = ParsedCitation(
+        author=author, year=year, title=title, raw="",
+    )
+    is_ok, reason = _try_validate_page1(pdf_path, citation)
+    if not is_ok:
+        # PDF rejeté
+        try:
+            pdf_path.unlink()
+        except OSError:
+            pass
+        return False
+
+    # PDF accepté : applique la transition manuellement
+    try:
+        rel_pdf = str(pdf_path.relative_to(SOURCES))
+    except ValueError:
+        rel_pdf = str(pdf_path)
+    sha = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+
+    ref.frontmatter["pdf_path"] = rel_pdf
+    ref.frontmatter["pdf_sha256"] = sha
+    ref.frontmatter["pdf_origin"] = f"paper_search_mcp:{source}"
+    append_state_history(
+        ref, "page1_validated", by="paper_search_acquire",
+        meta={"source": source, "pdf_path": rel_pdf,
+              "page1_validation": "ok"},
+    )
+    save_ref(ref)
+    return True
