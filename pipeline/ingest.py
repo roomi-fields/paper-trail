@@ -298,67 +298,80 @@ def _make_slug(author: str, year: str, title: str) -> str:
 # Identification via Crossref / S2 (réutilise lib/)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_PAPER_SEARCH_PROJECT = "/home/romi/dev/mcp/paper-search-mcp"
-_PAPER_SEARCH_SOURCES = "crossref,openalex,dblp,semantic,openaire,europepmc"
-_PAPER_SEARCH_TIMEOUT_S = 35
 _DOI_CACHE: dict[tuple[str, str, str], Optional[str]] = {}
 
 
 def _paper_search_doi(title: str, author: str, year: str) -> Optional[str]:
-    """Fallback DOI via paper-search MCP CLI (Crossref/OpenAlex/dblp/S2/...).
+    """Fallback DOI via les Searchers intégrés (pipeline/cascade_sources/).
 
-    On ne renvoie un DOI que si l'année du résultat matche l'année attendue
-    (si fournie) ET si le lastname attendu apparaît dans les auteurs.
+    Utilise dblp, Semantic Scholar, OpenAIRE, Europe PMC en natif (sans
+    subprocess). Crossref et OpenAlex sont déjà couverts par
+    lib/oa_finder.py (niveau 1), donc on les omet ici pour éviter
+    doublons.
+
+    Filtres anti-faux-positif : lastname attendu présent dans authors,
+    year strict si fournie, similarité titre normalisé ≥ 0.55.
     """
     if not title:
         return None
+
+    # Searchers DOI-utiles (lazy import pour ne pas charger au module-load)
+    try:
+        from .cascade_sources import (
+            DBLPSearcher, SemanticSearcher, OpenAiresearcher,
+            EuropePMCSearcher,
+        )
+    except Exception:
+        return None
+    searchers = [
+        ("dblp", DBLPSearcher),
+        ("semantic", SemanticSearcher),
+        ("openaire", OpenAiresearcher),
+        ("europepmc", EuropePMCSearcher),
+    ]
+
     query_terms = [title.strip()]
     if author:
         query_terms.append(author.strip())
     if year:
         query_terms.append(year.strip())
     query = " ".join(query_terms)
-    if not Path(_PAPER_SEARCH_PROJECT).exists():
-        return None
-    cmd = [
-        "uv", "run", "--project", _PAPER_SEARCH_PROJECT,
-        "python", "-m", "paper_search_mcp.cli", "search", query,
-        "-s", _PAPER_SEARCH_SOURCES,
-        "-n", "3",
-    ]
-    try:
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True,
-            timeout=_PAPER_SEARCH_TIMEOUT_S,
-        )
-        if proc.returncode != 0:
-            return None
-        data = json.loads(proc.stdout)
-    except Exception:
-        return None
-    expected_lastname = _to_ascii_lower(_extract_first_author_lastname(author or ""))
+
+    expected_lastname = _to_ascii_lower(
+        _extract_first_author_lastname(author or "")
+    )
     expected_year = (year or "").strip()
-    best_doi: Optional[str] = None
-    for paper in data.get("papers", []):
-        doi = (paper.get("doi") or "").strip()
-        if not doi:
+
+    for source_name, SearcherCls in searchers:
+        try:
+            searcher = SearcherCls()
+            papers = searcher.search(query, max_results=3)
+        except Exception:
             continue
-        ptitle = paper.get("title") or ""
-        pauthors = str(paper.get("authors") or "").lower()
-        pdate = str(paper.get("published_date") or "")
-        pyear = pdate[:4] if pdate else ""
-        if expected_year and pyear and pyear != expected_year:
-            continue
-        if expected_lastname and expected_lastname not in pauthors:
-            continue
-        if title:
-            t_norm = _normalize_title(title)
-            p_norm = _normalize_title(ptitle)
-            if t_norm and p_norm and SequenceMatcher(None, t_norm, p_norm).ratio() < 0.55:
+        for paper in papers:
+            doi = (getattr(paper, "doi", "") or "").strip()
+            if not doi:
                 continue
-        best_doi = doi
-        break
-    return best_doi
+            ptitle = getattr(paper, "title", "") or ""
+            authors_field = getattr(paper, "authors", None)
+            if isinstance(authors_field, list):
+                pauthors = " ".join(str(a) for a in authors_field).lower()
+            else:
+                pauthors = str(authors_field or "").lower()
+            pdate = str(getattr(paper, "published_date", "") or "")
+            pyear = pdate[:4] if pdate else ""
+            if expected_year and pyear and pyear != expected_year:
+                continue
+            if expected_lastname and expected_lastname not in pauthors:
+                continue
+            if title:
+                t_norm = _normalize_title(title)
+                p_norm = _normalize_title(ptitle)
+                if (t_norm and p_norm and
+                        SequenceMatcher(None, t_norm, p_norm).ratio() < 0.55):
+                    continue
+            return doi
+    return None
 
 
 def _identify_doi(citation: ParsedCitation) -> Optional[str]:
@@ -367,8 +380,9 @@ def _identify_doi(citation: ParsedCitation) -> Optional[str]:
     Ordre :
     1. Si citation.doi présent (extrait par le parser) → return
     2. Crossref search par titre+auteur+année (lib/oa_finder.py) — rapide
-    3. paper-search MCP CLI : Crossref + OpenAlex + dblp + Semantic Scholar +
-       OpenAIRE + Europe PMC — fallback large (~30s)
+    3. Searchers intégrés (cascade_sources) : dblp + Semantic Scholar +
+       OpenAIRE + Europe PMC — fallback large (intégration native, sans
+       subprocess)
 
     Cache LRU sur (lastname, year, title_prefix) pour dédupliquer dans une
     même session INGEST (utile si plusieurs SOTAs citent la même ref).
