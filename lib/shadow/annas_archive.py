@@ -1,111 +1,191 @@
 """Anna's Archive cascade — source d'acquisition opt-in.
 
-Extrait de pipeline/cascade.py (_aa_md5_from_doi, _aa_md5_from_title,
-_md5_download_cascade, try_annas_archive, lignes 420-560).
+Cascade en 3 phases pour obtenir un MD5 utilisable, puis cascade DL
+multi-miroir Libgen.
 
 Activation : variable d'environnement RESEARCH_ENABLE_SHADOW_LIBS=1.
 
-L'utilisation d'Anna's Archive peut violer le droit d'auteur dans
+L'utilisation d'Anna's Archive / Libgen peut violer le droit d'auteur dans
 votre juridiction. Cf. DISCLAIMER.md à la racine du plugin.
 
-Note : le helper `lib/shadow/annas_archive_helper.AnnasArchive.search_books`
-(copié depuis source-collector) avait son parser BeautifulSoup cassé au
-2026-05-24. On parse directement le HTML de la page de search ici.
-L'anti-homonymie est garantie par la page 1 validation côté
-`_save_and_validate`.
+La liste des miroirs UP est récupérée dynamiquement depuis
+`open-slum.pages.dev` via `lib/shadow/mirrors.py` (cache 24h, fallback
+statique si open-slum est lui-même inaccessible).
+
+Anti-homonymie : garantie par la page 1 validation côté `_save_and_validate`,
+quelle que soit la source MD5.
 """
 from __future__ import annotations
+
 import re
 from urllib.parse import quote
 
 from pipeline.registry import Ref
 
+from .mirrors import get_aa_mirrors, get_libgen_mirrors
+
 
 def _aa_md5_from_doi(doi: str) -> tuple[str | None, str]:
-    """AA `/scidb/<doi>` → MD5. Retourne (md5_or_None, info_string)."""
-    # Lazy import pour éviter cycle au module-load
+    """F1 — AA `/scidb/<doi>` → MD5, en essayant tous les miroirs AA UP."""
     from pipeline.cascade import _http_get
 
-    scidb_url = f"https://annas-archive.gl/scidb/{quote(doi, safe=':/')}"
-    html = _http_get(scidb_url, timeout=30)
-    if not html:
-        return None, "scidb_unreachable"
-    m = re.search(rb"/md5/([0-9a-f]{32})", html or b"")
-    if not m:
-        return None, "scidb_no_md5"
-    return m.group(1).decode(), "scidb_match"
+    tried = []
+    for mirror in get_aa_mirrors():
+        scidb_url = f"https://{mirror}/scidb/{quote(doi, safe=':/')}"
+        html = _http_get(scidb_url, timeout=30)
+        if not html:
+            tried.append(f"{mirror}:unreachable")
+            continue
+        m = re.search(rb"/md5/([0-9a-f]{32})", html)
+        if m:
+            return m.group(1).decode(), f"scidb_match:{mirror}"
+        tried.append(f"{mirror}:no_md5")
+    return None, f"scidb_failed:{','.join(tried)}" if tried else "scidb_no_aa_mirror"
 
 
 def _aa_md5_from_title(title: str, author: str) -> tuple[str | None, str]:
     """F2 — title-search AA, extraction MD5 directe depuis HTML.
 
-    Le helper `lib/shadow/annas_archive_helper.AnnasArchive.search_books`
-    retournait des BookData aux champs vides (parser BeautifulSoup cassé,
-    observé 2026-05-24). Pour ne pas dépendre de ce parser, on fetch
-    directement la page de search et on extrait les `<a href="/md5/...">`
-    associés à leur contexte titre.
-
-    Anti-homonymie : on filtre les hits dont le bloc HTML contient au moins
-    un mot distinctif (≥ 5 lettres) du titre demandé. La sécurité finale
-    reste la page 1 validation post-DL (`_save_and_validate`).
-
-    Retourne (md5_or_None, info_string).
+    Filtre les hits dont le bloc HTML contient au moins un mot distinctif
+    (≥ 5 lettres) du titre demandé + le lastname de l'auteur. La sécurité
+    finale reste la page 1 validation post-DL.
     """
     from pipeline.cascade import _http_get
 
     if not title:
         return None, "no_title_for_aa_search"
     query = f"{title} {author}".strip() if author else title
-    search_url = f"https://annas-archive.gl/search?q={quote(query)}&ext=pdf"
-    html_bytes = _http_get(search_url, timeout=30)
-    if not html_bytes:
-        return None, "aa_search_unreachable"
-    html = html_bytes.decode("utf-8", errors="replace")
-
-    parts = re.split(r'/md5/([0-9a-f]{32})', html)
-    if len(parts) < 3:
-        return None, "aa_no_md5_in_search_html"
-
-    distinctive = [w.lower() for w in title.replace("-", " ").split()
-                   if len(w) >= 5 and w.isalpha()]
+    distinctive = [
+        w.lower() for w in title.replace("-", " ").split()
+        if len(w) >= 5 and w.isalpha()
+    ]
     author_norm = (author or "").lower().split()[0] if author else None
 
-    hits_examined = 0
-    for i in range(1, len(parts) - 1, 2):
-        md5 = parts[i]
-        chunk = parts[i + 1][:2500]
-        text = re.sub(r'<[^>]+>', ' ', chunk)
-        text = re.sub(r'\s+', ' ', text).lower()
-        hits_examined += 1
-        if distinctive:
-            matches = [w for w in distinctive if w in text]
-            if not matches:
+    for mirror in get_aa_mirrors():
+        search_url = f"https://{mirror}/search?q={quote(query)}&ext=pdf"
+        html_bytes = _http_get(search_url, timeout=30)
+        if not html_bytes:
+            continue
+        html = html_bytes.decode("utf-8", errors="replace")
+        parts = re.split(r"/md5/([0-9a-f]{32})", html)
+        if len(parts) < 3:
+            continue
+
+        for i in range(1, len(parts) - 1, 2):
+            md5 = parts[i]
+            chunk = parts[i + 1][:2500]
+            text = re.sub(r"<[^>]+>", " ", chunk)
+            text = re.sub(r"\s+", " ", text).lower()
+            if distinctive:
+                matches = [w for w in distinctive if w in text]
+                if not matches:
+                    continue
+                if author_norm and author_norm not in text:
+                    continue
+                return md5, f"aa_title_search:{mirror}:kw={matches[0]!r}"
+            else:
+                return md5, f"aa_first_hit:{mirror}"
+
+    return None, "aa_title_no_match_any_mirror"
+
+
+def _libgen_search_direct(title: str, author: str) -> tuple[str | None, str]:
+    """F3 — recherche Libgen directe (bypass AA Cloudflare).
+
+    Itère sur tous les miroirs Libgen UP, parse la table de résultats avec
+    BeautifulSoup, retourne le premier MD5 dont le row contient au moins un
+    mot distinctif du titre + le lastname de l'auteur.
+
+    Anti-homonymie double-check : page 1 validation dans `_save_and_validate`.
+    """
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        return None, "libgen_direct:no_bs4"
+    from pipeline.cascade import _http_get
+
+    if not title:
+        return None, "libgen_direct:no_title"
+
+    query_parts = []
+    if author:
+        query_parts.append(author.split(",")[0].split()[0])
+    query_parts.append(title)
+    query = " ".join(query_parts).strip()
+
+    distinctive = [
+        w.lower() for w in title.replace("-", " ").split()
+        if len(w) >= 5 and w.isalpha()
+    ]
+    author_norm = (author or "").lower().split()[0] if author else None
+
+    for mirror in get_libgen_mirrors():
+        url = f"https://{mirror}/index.php?req={quote(query)}&res=25"
+        html_bytes = _http_get(url, timeout=30)
+        if not html_bytes:
+            continue
+        try:
+            soup = BeautifulSoup(html_bytes.decode("utf-8", errors="replace"), "html.parser")
+        except Exception:
+            continue
+
+        seen = set()
+        for a in soup.find_all("a", title=True):
+            title_attr = a.get("title", "")
+            if not re.search(r"ID:\s*\d+<br>", title_attr):
                 continue
-            if author_norm and author_norm not in text:
+            tr = a.find_parent("tr")
+            if not tr:
                 continue
-            return md5, f"aa_title_search_match:kw={matches[0]!r}"
-        else:
-            return md5, "aa_first_hit_no_distinctive_words"
-    return None, f"aa_no_keyword+author_match_in_{hits_examined}_hits"
+            ads_link = tr.find("a", href=re.compile(r"ads\.php\?md5="))
+            if not ads_link:
+                continue
+            md5_m = re.search(r"md5=([a-f0-9]{32})", ads_link["href"])
+            if not md5_m:
+                continue
+            md5 = md5_m.group(1)
+            if md5 in seen:
+                continue
+            seen.add(md5)
+            row_text = tr.get_text(" ", strip=True).lower()
+            if distinctive and not any(w in row_text for w in distinctive):
+                continue
+            if author_norm and author_norm not in row_text:
+                continue
+            return md5, f"libgen_direct:{mirror}"
+
+    return None, "libgen_direct:no_match"
 
 
 def _md5_download_cascade(md5: str, ref: Ref, via_label: str) -> tuple[str, dict]:
-    """Cascade DL libgen.li → library.lol pour un MD5 donné."""
+    """Cascade DL : itère sur tous les miroirs Libgen UP, fallback library.lol.
+
+    Pour chaque miroir : GET ads.php?md5=X → extraction get.php?md5=X&key=Y →
+    DL + page 1 validation. Premier succès gagne.
+    """
     from pipeline.cascade import _http_get, _save_and_validate
 
-    libgen_landing = f"https://libgen.li/ads.php?md5={md5}"
-    landing = _http_get(libgen_landing, timeout=30)
-    if landing:
-        m2 = re.search(rb'(get\.php\?[^"\']+)', landing)
-        if m2:
-            dl_url = "https://libgen.li/" + m2.group(1).decode()
-            pdf = _http_get(dl_url, timeout=180, headers={"Referer": libgen_landing})
-            if pdf:
-                r = _save_and_validate(pdf, ref)
-                if r[0] in ("success", "page1_failed"):
-                    r[1]["md5"] = md5
-                    r[1]["via"] = f"{via_label}_libgen"
-                    return r
+    attempted = []
+    for mirror in get_libgen_mirrors():
+        landing_url = f"https://{mirror}/ads.php?md5={md5}"
+        landing = _http_get(landing_url, timeout=30)
+        if not landing:
+            attempted.append(f"{mirror}:landing_unreachable")
+            continue
+        get_m = re.search(rb'(get\.php\?[^"\']+)', landing)
+        if not get_m:
+            attempted.append(f"{mirror}:no_get_url")
+            continue
+        dl_url = f"https://{mirror}/" + get_m.group(1).decode()
+        pdf = _http_get(dl_url, timeout=180, headers={"Referer": landing_url})
+        if pdf:
+            r = _save_and_validate(pdf, ref)
+            if r[0] in ("success", "page1_failed"):
+                r[1]["md5"] = md5
+                r[1]["via"] = f"{via_label}_{mirror}"
+                return r
+        attempted.append(f"{mirror}:dl_failed")
+
     lib_url = f"https://library.lol/main/{md5.upper()}"
     pdf = _http_get(lib_url, timeout=60)
     if pdf:
@@ -114,39 +194,59 @@ def _md5_download_cascade(md5: str, ref: Ref, via_label: str) -> tuple[str, dict
             r[1]["md5"] = md5
             r[1]["via"] = f"{via_label}_library_lol"
             return r
-    return "failed", {"reason": "aa_md5_found_but_no_dl", "md5": md5,
-                       "via_attempted": [f"{via_label}_libgen", f"{via_label}_library_lol"]}
+    attempted.append("library_lol:dl_failed")
+
+    return "failed", {
+        "reason": "md5_found_but_no_dl",
+        "md5": md5,
+        "via_attempted": attempted,
+    }
 
 
 def try_annas_archive(ref: Ref) -> tuple[str, dict]:
-    """AA cascade (F2 — title-fallback en plus de scidb DOI).
+    """Cascade complète : F1 scidb-DOI → F2 AA-title → F3 Libgen-direct → DL multi-miroir.
 
     Ordre :
-      1. Si DOI : AA `/scidb/<doi>` → MD5
-      2. Sinon (F2) : AA title-search → MD5
-      3. Cascade DL : libgen.li → library.lol
-      4. Anti-homonymie : `_save_and_validate` filtre via page 1 validation.
+      1. F1 : si DOI présent → AA `/scidb/<doi>` (tous miroirs AA UP)
+      2. F2 : AA title-search (tous miroirs AA UP)
+      3. F3 : Libgen direct search (bypass AA Cloudflare, tous miroirs Libgen UP)
+      4. DL : multi-miroir Libgen → library.lol fallback
+      5. Page 1 anti-homonymie validation finale dans `_save_and_validate`
     """
     from pipeline.cascade import _doi
 
     doi = _doi(ref)
+    author = (ref.frontmatter.get("author") or "").strip()
+    title = (ref.frontmatter.get("title") or "").strip()
     md5 = None
     via_label = None
+    fail_chain = []
 
     if doi:
         md5, info = _aa_md5_from_doi(doi)
         if md5:
-            via_label = "aa_scidb"
-        elif info == "scidb_unreachable":
-            return "failed", {"reason": info}
+            via_label = info
+        else:
+            fail_chain.append(f"F1:{info}")
 
     if not md5:
-        author = (ref.frontmatter.get("author") or "").strip()
-        title = (ref.frontmatter.get("title") or "").strip()
         md5, info = _aa_md5_from_title(title, author)
         if md5:
-            via_label = "aa_title"
+            via_label = info
         else:
-            return "no_source", {"reason": info}
+            fail_chain.append(f"F2:{info}")
+
+    if not md5:
+        md5, info = _libgen_search_direct(title, author)
+        if md5:
+            via_label = info
+        else:
+            fail_chain.append(f"F3:{info}")
+
+    if not md5:
+        return "no_source", {
+            "reason": "all_md5_sources_failed",
+            "chain": fail_chain,
+        }
 
     return _md5_download_cascade(md5, ref, via_label)
