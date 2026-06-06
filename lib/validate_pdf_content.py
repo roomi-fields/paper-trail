@@ -161,6 +161,26 @@ def extract_page1(pdf_path: Path, max_chars: int = 4000) -> str:
     return ""
 
 
+def extract_head_pages(pdf_path: Path, n_pages: int = 6,
+                       max_chars: int = 6000) -> str:
+    """Extrait le texte des N premières pages.
+
+    Utile pour les livres : la page 1 est souvent une couverture sans
+    auteur ni mots-clés (titre seul), et le contenu identifiable
+    apparaît en préface/intro.
+    """
+    try:
+        out = subprocess.run(
+            ["pdftotext", "-l", str(n_pages), str(pdf_path), "-"],
+            capture_output=True, timeout=30, text=True, errors="ignore",
+        )
+        if out.returncode == 0:
+            return out.stdout[:max_chars]
+    except Exception:
+        pass
+    return ""
+
+
 def probe_pdf_health(pdf_path, timeout: int = 15) -> tuple[str, str]:
     """Diagnostic DÉTERMINISTE de l'état physique d'un fichier (lit le fichier réel,
     jamais une valeur DB).
@@ -345,7 +365,20 @@ def validate_pdf_against_ref(pdf_path: Path, expected_author: str = "",
             # Auteur pas dans la page 1 — pas un kill switch, mais suspect
             # surtout si pas de on-domain
             if not on:
-                return False, f"author_{first_name}_not_in_page1 and no_music_keywords"
+                # Fallback livres : la page 1 d'un livre est souvent une
+                # couverture (titre + éditeur seuls). Élargir à 6 pages
+                # avant de conclure ; préface/intro contiennent généralement
+                # auteur et mots-clés du domaine.
+                head = extract_head_pages(pdf_path)
+                head_low = head.lower()
+                head_on = detect_on_domain(head)
+                if first_name.lower() in head_low or head_on:
+                    # Re-évaluer en élargissant le texte pour les checks
+                    # de titre qui suivent.
+                    text = head
+                    on = head_on
+                else:
+                    return False, f"author_{first_name}_not_in_first_pages and no_domain_keywords"
 
     # Check titre si fourni avec seuil
     if expected_title and required_title_match > 0:
@@ -370,25 +403,46 @@ def validate_pdf_against_ref(pdf_path: Path, expected_author: str = "",
                 text_low = text.lower()
                 verbatim_hits = [w for w in distinctive if w in text_low]
                 verbatim_ratio = len(verbatim_hits) / len(distinctive)
-                if verbatim_ratio < 0.50:
-                    return False, f"title_similarity_too_low {sim:.2f} and distinctive_word_verbatim {verbatim_ratio:.2f} < 0.50"
-                # else : accepté via gate secondaire (≥50% mots distinctifs)
+                # Seuil adaptatif aussi pour le gate secondaire : un titre
+                # avec beaucoup de mots distinctifs exige une couverture
+                # plus large que 50% peut donner. On exige 60% si le titre
+                # a ≥5 mots distinctifs, 50% sinon.
+                req_ratio = 0.60 if len(distinctive) >= 5 else 0.50
+                if verbatim_ratio < req_ratio:
+                    return False, (
+                        f"title_similarity_too_low {sim:.2f} and "
+                        f"distinctive_word_verbatim {verbatim_ratio:.2f} "
+                        f"< {req_ratio:.2f}"
+                    )
+                # else : accepté via gate secondaire (≥seuil mots distinctifs)
             else:
                 return False, f"title_similarity_too_low {sim:.2f} < {required_title_match} (generic-only title)"
 
-    # NEW 2026-05-20 (batch L — ~56% substitutions sur noms indiens courts) :
-    # Exiger ≥1 mot DISTINCTIF (≥5 lettres, non générique) du titre verbatim en page 1.
-    # Les mots génériques (raga/indian/music/analysis/...) sont partagés par des centaines
-    # de papiers ICM/MIR et ne discriminent pas une homonymie — on les exclut.
-    # Garde-fou : si le titre n'a QUE des mots génériques (rare), on retombe sur l'ancien
-    # check (≥1 mot long quelconque) pour ne pas tout rejeter.
+    # Seuil distinctif adaptatif (2026-06-06) : exiger ≥1 mot distinctif
+    # est trop laxe entre homonymes du même domaine (Dudley 1939 Vocoder vs
+    # Morise 2016 WORLD, Schwarz 2007 vs Einbond 2016…). Si le titre attendu
+    # a plusieurs mots distinctifs, en exiger plusieurs verbatim :
+    #   1-2 mots distinctifs → 1 hit suffit (rétrocompat)
+    #   3-4 mots distinctifs → 2 hits requis
+    #   5+ mots distinctifs   → 3 hits requis
+    # Garde-fou : titre 100% générique → fallback ancien check (≥1 mot long).
     if expected_title:
         distinctive = distinctive_title_words(expected_title)
         text_low = text.lower()
         if distinctive:
             verbatim_hits = [w for w in distinctive if w in text_low]
-            if not verbatim_hits:
-                return False, f"no_distinctive_title_word_verbatim (expected ≥1 from {distinctive[:5]})"
+            if len(distinctive) >= 5:
+                required_hits = 3
+            elif len(distinctive) >= 3:
+                required_hits = 2
+            else:
+                required_hits = 1
+            if len(verbatim_hits) < required_hits:
+                return False, (
+                    f"distinctive_title_words_below_threshold "
+                    f"({len(verbatim_hits)}/{required_hits} hits "
+                    f"on {distinctive[:5]})"
+                )
         else:
             long_words = [w.lower() for w in re.findall(r"[a-zA-Z]+", expected_title) if len(w) >= 5]
             if long_words and not any(w in text_low for w in long_words):
