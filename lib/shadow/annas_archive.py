@@ -158,34 +158,72 @@ def _libgen_search_direct(title: str, author: str) -> tuple[str | None, str]:
 
 
 def _md5_download_cascade(md5: str, ref: Ref, via_label: str) -> tuple[str, dict]:
-    """Cascade DL : itère sur tous les miroirs Libgen UP, fallback library.lol.
+    """Cascade DL : itère sur tous les miroirs Libgen UP, puis AA, puis library.lol.
 
     Pour chaque miroir : GET ads.php?md5=X → extraction get.php?md5=X&key=Y →
     DL + page 1 validation. Premier succès gagne.
+
+    Diagnostic granulaire dans `attempted` : `landing_unreachable`,
+    `no_get_url`, `dl_unreachable`, `dl_validation_failed` — utile pour
+    diagnostiquer pourquoi un md5 connu ne se télécharge pas.
     """
     from pipeline.cascade import _http_get, _save_and_validate
 
     attempted = []
+    # Libgen multi-miroir : ads.php → get.php
     for mirror in get_libgen_mirrors():
         landing_url = f"https://{mirror}/ads.php?md5={md5}"
         landing = _http_get(landing_url, timeout=30)
         if not landing:
             attempted.append(f"{mirror}:landing_unreachable")
             continue
-        get_m = re.search(rb'(get\.php\?[^"\']+)', landing)
+        # Patterns d'extraction de l'URL de DL : `get.php?...` (legacy)
+        # ou `get/?...` (variante observée sur certains miroirs récents).
+        get_m = (re.search(rb'(get\.php\?[^"\']+)', landing)
+                 or re.search(rb'(get/\?[^"\']+)', landing))
         if not get_m:
             attempted.append(f"{mirror}:no_get_url")
             continue
         dl_url = f"https://{mirror}/" + get_m.group(1).decode()
         pdf = _http_get(dl_url, timeout=180, headers={"Referer": landing_url})
-        if pdf:
-            r = _save_and_validate(pdf, ref)
-            if r[0] in ("success", "page1_failed"):
-                r[1]["md5"] = md5
-                r[1]["via"] = f"{via_label}_{mirror}"
-                return r
-        attempted.append(f"{mirror}:dl_failed")
+        if not pdf:
+            attempted.append(f"{mirror}:dl_unreachable")
+            continue
+        r = _save_and_validate(pdf, ref)
+        if r[0] in ("success", "page1_failed"):
+            r[1]["md5"] = md5
+            r[1]["via"] = f"{via_label}_{mirror}"
+            return r
+        attempted.append(f"{mirror}:dl_validation_failed")
 
+    # Fallback 1 : annas-archive.org sert un lien DL direct via `/md5/<md5>`.
+    for aa_mirror in get_aa_mirrors():
+        aa_md5_url = f"https://{aa_mirror}/md5/{md5}"
+        landing = _http_get(aa_md5_url, timeout=30)
+        if not landing:
+            attempted.append(f"aa:{aa_mirror}:landing_unreachable")
+            continue
+        # AA présente une liste de slow/fast download. On cible le premier lien
+        # `/slow_download/<md5>/...` ou `/fast_download/<md5>/...`.
+        aa_dl_m = re.search(
+            rb'(/(?:slow_download|fast_download|server)/[^"\']+)', landing,
+        )
+        if not aa_dl_m:
+            attempted.append(f"aa:{aa_mirror}:no_dl_link")
+            continue
+        aa_dl_url = f"https://{aa_mirror}" + aa_dl_m.group(1).decode()
+        pdf = _http_get(aa_dl_url, timeout=180, headers={"Referer": aa_md5_url})
+        if not pdf:
+            attempted.append(f"aa:{aa_mirror}:dl_unreachable")
+            continue
+        r = _save_and_validate(pdf, ref)
+        if r[0] in ("success", "page1_failed"):
+            r[1]["md5"] = md5
+            r[1]["via"] = f"{via_label}_aa_{aa_mirror}"
+            return r
+        attempted.append(f"aa:{aa_mirror}:dl_validation_failed")
+
+    # Fallback 2 : library.lol historique.
     lib_url = f"https://library.lol/main/{md5.upper()}"
     pdf = _http_get(lib_url, timeout=60)
     if pdf:
@@ -194,7 +232,9 @@ def _md5_download_cascade(md5: str, ref: Ref, via_label: str) -> tuple[str, dict
             r[1]["md5"] = md5
             r[1]["via"] = f"{via_label}_library_lol"
             return r
-    attempted.append("library_lol:dl_failed")
+        attempted.append("library_lol:dl_validation_failed")
+    else:
+        attempted.append("library_lol:dl_unreachable")
 
     return "failed", {
         "reason": "md5_found_but_no_dl",

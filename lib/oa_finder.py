@@ -97,7 +97,10 @@ def get_core_pdf_urls(title: str, author: str = "") -> list[str]:
     results = core_search(title, author)
     urls = []
     for r in results:
-        pdf = r.get("downloadUrl") or r.get("fullText", {}).get("url")
+        # `fullText` peut être absent OU présent à None (API CORE) — le
+        # `or {}` couvre les deux cas, contrairement à `.get(k, {})`.
+        full_text = r.get("fullText") or {}
+        pdf = r.get("downloadUrl") or full_text.get("url")
         if pdf:
             urls.append(pdf)
     return urls
