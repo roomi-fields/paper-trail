@@ -167,6 +167,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"Récap session : planned={stats['planned']}  done={stats['done']}  "
               f"pending={stats['pending']}  blocked={stats['blocked']}  "
               f"skipped_terminal={stats['skipped_terminal']}")
+        # Indice : une fiche enchaîne plusieurs transitions (uid_resolved →
+        # pdf_acquired → page1_validated). Une passe = une transition par
+        # fiche. Pour aller jusqu'à un état stable en un seul appel, suggérer
+        # explicitement `--loop`.
+        if stats["done"] > 0:
+            print(
+                "  → relance avec `pipeline run --loop` pour auto-chaîner "
+                "les transitions suivantes jusqu'à épuisement."
+            )
     else:
         total = {"planned": 0, "done": 0, "pending": 0, "blocked": 0,
                  "skipped_terminal": 0}

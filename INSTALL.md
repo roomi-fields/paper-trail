@@ -88,6 +88,24 @@ MyProject
 The file is **optional**. If absent, the whitelist is empty and every
 author name is sent verbatim to S2.
 
+## Optional MCPs (paper-search, NotebookLM, RTFM)
+
+The plugin uses three MCP servers when available. **All three are optional —
+the plugin works without them** by falling back to the built-in REST cascade
+(Crossref, arXiv, OpenAlex, Unpaywall, HAL, CORE, archive.org, Semantic
+Scholar). The fallback is always active ; the MCPs only add convenience
+and additional sources.
+
+| MCP | What it adds | Without it |
+|---|---|---|
+| `paper-search` | Single unified API across 22 platforms (used in step 1 of `sota-writer`) | The cascade and resolver still hit Crossref / S2 / arXiv / OpenAlex / Unpaywall / HAL / CORE directly via REST |
+| `NotebookLM` | Books corpus with citations | Skipped — only used when `RESEARCH_ENABLE_NOTEBOOKLM=1` |
+| `RTFM` | Local indexed corpus, OCR failure correlation | `RTFM_DB` left unset, ingest skips OCR correlation cleanly |
+
+If you want the MCPs, configure them in `~/.claude/mcp.json`. The plugin
+detects their availability at runtime — no need to advertise their presence
+in env vars.
+
 ## Verify the install
 
 ```bash
