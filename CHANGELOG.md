@@ -5,6 +5,56 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8] — 2026-06-06
+
+Retours terrain d'un projet tiers utilisant le plugin sur un layout flat
+non-Obsidian : six bugs corrigés (portabilité, robustesse cascade,
+validation page 1, UX).
+
+### Fixed
+
+- **I21 + hook pre-save : compatibles layout flat.** La détection de
+  citation texte libre ne reconnaissait que les wikilinks Obsidian
+  `[[slug]]` et levait à tort sur les SOTAs flat (citations légitimes
+  au format `[texte](refs/slug.md)`). La regex accepte maintenant les
+  deux formes.
+- **`sota_sync` hors repo git.** `arbitrate` échouait à chaque appel
+  avec « git backup pre-flight failed » quand le vault n'était pas
+  versionné. Par défaut : skip propre avec WARN ; comportement strict
+  opt-in via `RESEARCH_REQUIRE_GIT=1`.
+- **`arbitrate reject-pdf` cohérent avec I5/I6.** La transition met la
+  fiche en `needs_reacquisition` après avoir effacé `pdf_path`/`pdf_sha256`,
+  mais ce state était dans `STATES_WITH_PDF` → I5/I6 levaient ensuite.
+  Retiré du set : ce state signifie « PDF inutilisable, en attente de
+  réacquisition », pas de PDF actif attendu.
+- **Page 1 anti-homonymie plus discriminante.** Cinq cas remontés
+  d'homonymes acceptés dans le même domaine (Dudley 1939 Vocoder vs
+  Morise 2016 WORLD, Schwarz 2007 vs Einbond 2016…). Seuil distinctif
+  adaptatif (1 hit pour 1-2 mots, 2 pour 3-4, 3 pour 5+) ; gate
+  secondaire 60 % au lieu de 50 % pour les titres ≥5 mots distinctifs.
+- **Couvertures de livre.** Roads *Microsound* rejeté car la page 1
+  est une couverture sans auteur ni keywords. Fallback : relire jusqu'à
+  6 pages avant de conclure à « author_not_in_page1 and no_domain_keywords ».
+- **CORE `AttributeError`.** `r.get("fullText", {}).get("url")` cassait
+  quand l'API renvoyait `fullText: null`. Remplacé par `r.get("fullText") or {}`.
+- **Anna's Archive `md5_found_but_no_dl`.** Cascade DL étoffée :
+  pattern d'extraction étendu (`get/?…` en plus de `get.php?…`),
+  diagnostic granulaire (`dl_unreachable` vs `dl_validation_failed`),
+  fallback `annas-archive.org/md5/<md5>` avant `library.lol`.
+
+### Changed
+
+- **`pipeline run` (mode mono-passe)** suggère explicitement
+  `pipeline run --loop` quand au moins une transition a été effectuée,
+  pour éviter d'avoir à relancer pour enchaîner les étapes suivantes
+  (uid_resolved → pdf_acquired → page1_validated).
+
+### Added
+
+- **`INSTALL.md`** : section listant les MCPs optionnels
+  (paper-search, NotebookLM, RTFM) et clarifiant que le plugin
+  fonctionne sans, via le fallback REST déjà actif.
+
 ## [0.3.7] — 2026-06-06
 
 Sécurité + portabilité : suppression de tout chemin hardcodé et de la
