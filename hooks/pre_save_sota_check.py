@@ -29,7 +29,10 @@ _CITATION_LINE_RE = re.compile(
     r"^\s*(?:[-*+]|\d+\.)\s+.*\b(19|20)\d{2}\b.+$",
     re.MULTILINE,
 )
-_HAS_WIKILINK_RE = re.compile(r"\[\[[a-z0-9_]+\]\]")
+_HAS_WIKILINK_RE = re.compile(
+    r"\[\[[a-z0-9_]+\]\]"
+    r"|\]\((?:[^)]*?/)?[a-z0-9_]+\.md\)"
+)
 _WIKILINK_RE = re.compile(r"\[\[([a-z0-9_]+)\]\]")
 _REF_SLUG_RE = re.compile(r"^[a-z][a-z0-9]*_(19|20)\d{2}_[a-z0-9_]+$")
 

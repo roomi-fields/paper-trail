@@ -47,11 +47,14 @@ VALID_STATES = {
 # Préfixes UID acceptés (cf. plan §1 I3)
 VALID_UID_PREFIXES = ("doi:", "arxiv:", "isbn:", "url:", "openalex:", "bibkey:")
 
-# États impliquant qu'un PDF a été acquis sur disque
+# États impliquant qu'un PDF doit être présent sur disque.
+# `needs_reacquisition` est exclu : ce state signifie "PDF inutilisable,
+# en attente d'une nouvelle acquisition". Soit le pdf_path/sha256 ont été
+# effacés (cas `arbitrate reject-pdf`), soit le fichier disque est absent
+# (cas auto-fix I5). Dans les deux cas, I5/I6 ne doivent pas relever.
 STATES_WITH_PDF = {
     "pdf_acquired",
     "awaiting_rtfm_ocr",
-    "needs_reacquisition",
     "page1_validated",
     "sota_cited_confirmed",
 }
@@ -956,9 +959,14 @@ _CITATION_LINE_RE_I21 = re.compile(
     r"^\s*(?:[-*+]|\d+\.)\s+.*\b(19|20)\d{2}\b.+$",
     re.MULTILINE,
 )
-# Pour exclure les lignes qui ont DÉJÀ un wikilink → considérées
-# comme ingérées
-_HAS_WIKILINK_RE = re.compile(r"\[\[[a-z0-9_]+\]\]")
+# Pour exclure les lignes qui ont DÉJÀ une référence liée → considérées
+# comme ingérées. Reconnaît :
+#   - wikilink Obsidian : [[slug]]
+#   - lien markdown vers une fiche : [text](refs/slug.md) ou [text](slug.md)
+_HAS_WIKILINK_RE = re.compile(
+    r"\[\[[a-z0-9_]+\]\]"
+    r"|\]\((?:[^)]*?/)?[a-z0-9_]+\.md\)"
+)
 
 
 def check_I20(refs: list[Ref], vault_root: Path = VAULT) -> list[dict]:

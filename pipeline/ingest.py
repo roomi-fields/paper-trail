@@ -17,6 +17,7 @@ avant chaque session INGEST).
 """
 from __future__ import annotations
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass, field, asdict
@@ -134,19 +135,28 @@ Thumbs.db
 def _ensure_git_backup(vault_root: Path, message: str) -> bool:
     """Vérifie que vault_root est un repo git, commit avant INGEST.
 
-    Si pas de `.git/`, refuse de tourner et propose à l'utilisateur de
-    lancer `pipeline ingest --init-git` au préalable.
+    Si pas de `.git/` :
+      - par défaut : skip proprement avec un WARN (vault non versionné →
+        pas de rollback possible mais l'opération continue).
+      - si `RESEARCH_REQUIRE_GIT=1` : refuse et propose `--init-git`.
 
-    Retourne True si backup OK, False sinon.
+    Retourne True si backup OK ou skip légitime, False sinon.
     """
     if not vault_root.exists():
         return False
     git_dir = vault_root / ".git"
     if not git_dir.exists():
-        print(f"[ERR] {vault_root} n'est pas un repo git.", flush=True)
-        print(f"      Pour initialiser : `pipeline ingest --init-git`",
+        if os.environ.get("RESEARCH_REQUIRE_GIT") == "1":
+            print(f"[ERR] {vault_root} n'est pas un repo git "
+                  f"(RESEARCH_REQUIRE_GIT=1).", flush=True)
+            print(f"      Pour initialiser : `pipeline ingest --init-git`",
+                  flush=True)
+            return False
+        print(f"[WARN] {vault_root} n'est pas un repo git — "
+              f"opération sans backup (rollback impossible). "
+              f"Pour activer le versionnement : `pipeline ingest --init-git`.",
               flush=True)
-        return False
+        return True
     # Commit les changements en cours avant la modification INGEST.
     # Timeout généreux : git add . peut prendre plusieurs minutes sur
     # un gros vault Obsidian la 1ère fois.
