@@ -28,13 +28,22 @@ from pipeline.registry import load_ref
 from pipeline.transitions import _crossref_title_search, _pick_crossref_strict
 
 
-REF_PATH = Path(
-    "/mnt/d/Obsidian/Articles/Projets/Ontologie musicale"
-    "/10_SOURCES/_registry/refs/bel_2007_biblio_informatique.md"
-)
+# Ce test négatif n'a de sens que sur un vault concret contenant
+# `bel_2007_biblio_informatique.md` (état retracted). Sur un vault de test
+# vide il est automatiquement skippé. Pour le lancer, pointer
+# `RESEARCH_F1_NEGATIVE_REF` (ou laisser le défaut basé sur REFS) vers une
+# ref retracted pour homonymie.
+import os
+from pipeline.config import REFS
+
+_DEFAULT_REF = REFS / "bel_2007_biblio_informatique.md"
+REF_PATH = Path(os.environ.get("RESEARCH_F1_NEGATIVE_REF", str(_DEFAULT_REF)))
 
 
 def main() -> int:
+    if not REF_PATH.exists():
+        print(f"[SKIP] Ref de test absente: {REF_PATH}")
+        return 0
     ref = load_ref(REF_PATH)
     if ref is None:
         print(f"[FAIL] Ref non chargeable: {REF_PATH}")

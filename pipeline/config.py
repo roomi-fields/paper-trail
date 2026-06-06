@@ -1,25 +1,46 @@
 """Chemins et constantes — paramétrables par variables d'environnement.
 
-Variables d'environnement supportées :
-- RESEARCH_VAULT_PATH      racine du vault (défaut : voir _DEFAULT_VAULT)
+Variables d'environnement requises :
+- RESEARCH_VAULT_PATH      racine du vault (REQUISE — sinon ConfigError)
+
+Variables optionnelles :
 - RESEARCH_SOURCES_PATH    dossier sources/PDFs (défaut : VAULT/10_SOURCES)
 - RESEARCH_REGISTRY_PATH   dossier registre (défaut : SOURCES/_registry)
 - RESEARCH_VAULT_LAYOUT    layout adapter (défaut : obsidian)
+- RESEARCH_RTFM_DB         base RTFM pour corrélation des échecs (défaut : aucune)
 - RESEARCH_ENABLE_SHADOW_LIBS  active AA + Sci-Hub (défaut : non)
 - RESEARCH_SKIP_END_DOCTOR     skip le SessionEnd hook (défaut : non)
+- RESEARCH_CONTACT_EMAIL   email injecté dans les requêtes externes (Crossref, S2, …)
+- S2_API_KEY               clé Semantic Scholar (défaut : appels non authentifiés)
 
-Pour le projet doctoral musicology-phd, les defaults restent les
-chemins historiques de Romain Peyrichou (WSL2 /mnt/d/Obsidian/...).
-Pour un autre utilisateur, surcharger via les env vars.
+Aucun chemin n'est codé en dur : si `RESEARCH_VAULT_PATH` n'est pas défini,
+le plugin refuse de démarrer avec un message d'aide explicite.
 """
 from pathlib import Path
 import os
 import sys
 
-# Defaults projet doctoral — surchargeables via env vars
-_DEFAULT_VAULT = Path("/mnt/d/Obsidian/Articles/Projets/Ontologie musicale")
 
-VAULT = Path(os.environ.get("RESEARCH_VAULT_PATH", str(_DEFAULT_VAULT)))
+class ConfigError(RuntimeError):
+    """Configuration manquante ou invalide."""
+
+
+_RAW_VAULT = os.environ.get("RESEARCH_VAULT_PATH")
+if not _RAW_VAULT:
+    raise ConfigError(
+        "RESEARCH_VAULT_PATH n'est pas défini.\n"
+        "\n"
+        "Le plugin paper-trail a besoin de connaître la racine de votre vault.\n"
+        "Définissez-la dans votre shell, par exemple :\n"
+        "\n"
+        "    export RESEARCH_VAULT_PATH=\"$HOME/Documents/MyResearch\"\n"
+        "\n"
+        "Variables optionnelles : RESEARCH_SOURCES_PATH, RESEARCH_REGISTRY_PATH,\n"
+        "RESEARCH_RTFM_DB, RESEARCH_CONTACT_EMAIL, S2_API_KEY.\n"
+        "Voir INSTALL.md pour la liste complète."
+    )
+
+VAULT = Path(_RAW_VAULT)
 SOURCES = Path(os.environ.get("RESEARCH_SOURCES_PATH",
                               str(VAULT / "10_SOURCES")))
 REGISTRY = Path(os.environ.get("RESEARCH_REGISTRY_PATH",
@@ -32,14 +53,14 @@ QUARANTINE = REGISTRY / "_quarantine"
 VAULT_LAYOUT = os.environ.get("RESEARCH_VAULT_LAYOUT", "obsidian")
 
 # Helpers locaux au plugin (lib/ à la racine du repo).
-# P0 refactor : helpers copiés depuis source-collector pour self-containment.
 LIB_PATH = Path(__file__).parent.parent / "lib"
 TOOLS = REGISTRY / "tools"
 
-# DB RTFM du projet doctoral (utilisée par Couche 5 — corrélation des échecs).
-# Hardcodée comme VAULT : ce repo ne tourne que sur la machine du doctorant.
-# (à refactorer en env var en P1)
-RTFM_DB = Path.home() / "dev/musicology-phd/.rtfm/library.db"
+# DB RTFM — optionnelle. La corrélation des échecs RTFM est désactivée
+# proprement quand elle est absente (cf. pipeline/rtfm_failures.py et
+# pipeline/ingest.py qui vérifient `.exists()` avant usage).
+_RTFM_DB_RAW = os.environ.get("RESEARCH_RTFM_DB")
+RTFM_DB = Path(_RTFM_DB_RAW) if _RTFM_DB_RAW else Path("/dev/null/no-rtfm-db")
 
 # Insère lib/ dans sys.path pour que `import validate_pdf_content`,
 # `import s2_resolver`, etc. marchent (ces helpers sont sans package

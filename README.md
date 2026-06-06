@@ -103,14 +103,16 @@ Or via marketplace (when published):
 
 ### Configure
 
-Minimum configuration in your shell profile or project `.env`:
+`RESEARCH_VAULT_PATH` is **required** — the plugin refuses to start
+without it and prints how to fix it. Add to your shell profile (or a
+project `.env` you source before launching Claude Code):
 
 ```bash
 export RESEARCH_VAULT_PATH=/path/to/your/vault
 export RESEARCH_VAULT_LAYOUT=obsidian   # or 'flat' or 'zotero' (V2)
 ```
 
-For complete configuration, see [`docs/USAGE.md`](docs/USAGE.md).
+For complete configuration, see [`INSTALL.md`](INSTALL.md).
 
 ### Try it
 
@@ -193,13 +195,22 @@ for the worker engine internals.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `RESEARCH_VAULT_PATH` | `~/research_vault` | Vault root |
-| `RESEARCH_SOURCES_PATH` | `$VAULT/sources` | PDF directory |
+| `RESEARCH_VAULT_PATH` | — (required) | Vault root — plugin refuses to start without it |
+| `RESEARCH_SOURCES_PATH` | `$VAULT/10_SOURCES` | PDF directory |
 | `RESEARCH_REGISTRY_PATH` | `$SOURCES/_registry` | YAML registry |
 | `RESEARCH_VAULT_LAYOUT` | `obsidian` | Adapter (obsidian / flat / zotero) |
+| `RESEARCH_RTFM_DB` | unset | Optional RTFM SQLite DB for failure correlation |
+| `RESEARCH_CONTACT_EMAIL` | `anonymous@example.org` | Email sent to Crossref, Semantic Scholar (politeness) |
+| `S2_API_KEY` | unset | Optional Semantic Scholar API key (stricter rate limit without) |
 | `RESEARCH_ENABLE_SHADOW_LIBS` | unset | Enable Anna's Archive & Sci-Hub (opt-in, see DISCLAIMER) |
 | `RESEARCH_ENABLE_NOTEBOOKLM` | unset | Enable NotebookLM in `sota-writer` phase A |
 | `RESEARCH_SKIP_END_DOCTOR` | unset | Skip the SessionEnd consistency check |
+
+The `PROJECT_AUTHORS` whitelist used by the Semantic Scholar resolver
+(group names treated as anonymous in queries — e.g. "Anonymous", "Group")
+is loaded from `$XDG_CONFIG_HOME/paper-trail/project_authors.txt`
+(default `~/.config/paper-trail/project_authors.txt`), one entry per line.
+The file is optional; if absent the whitelist is empty.
 
 ## License
 

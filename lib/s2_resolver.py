@@ -13,6 +13,7 @@ Stratégie pour chaque fail restant :
 Rate limit S2 : 1 req/sec (avec clé) ou 100 req/5min (sans).
 """
 import json
+import os
 import re
 import sys
 import time
@@ -30,19 +31,53 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-STATUS_JSON = Path("/mnt/d/Obsidian/Articles/Projets/Ontologie musicale/10_SOURCES/_tracking_status.json")
-MD_PATH = Path("/mnt/d/Obsidian/Articles/Projets/Ontologie musicale/10_SOURCES/SOURCES_TRACKING.md")
-OBSIDIAN_ROOT = Path("/mnt/d/Obsidian/Articles/Projets/Ontologie musicale")
-LOG_PATH = Path("/tmp/s2_resolver.log")
+# Chemins dérivés du vault configuré (cf. pipeline.config). Imports tardifs
+# pour éviter le cycle import (config.py insère lib/ dans sys.path).
+def _vault_paths():
+    from pipeline.config import VAULT, SOURCES
+    return {
+        "status_json": SOURCES / "_tracking_status.json",
+        "md_path": SOURCES / "SOURCES_TRACKING.md",
+        "obsidian_root": VAULT,
+    }
 
-S2_API_KEY = "s2k-AQyqHvTAZz4vQhpLYgZYDEV0k1ik8KvotWQ2HfUj"
+
+def _status_json() -> Path: return _vault_paths()["status_json"]
+def _md_path() -> Path: return _vault_paths()["md_path"]
+def _obsidian_root() -> Path: return _vault_paths()["obsidian_root"]
+
+
+LOG_PATH = Path(os.environ.get("S2_RESOLVER_LOG", "/tmp/s2_resolver.log"))
+
+# Clé S2 : env var uniquement. Sans clé, S2 accepte les requêtes non
+# authentifiées avec un rate limit plus strict (100 req / 5 min).
+S2_API_KEY = os.environ.get("S2_API_KEY")
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
 SCIHUB_MIRRORS = ["https://sci-hub.box/", "https://sci-hub.ru/", "https://sci-hub.al/", "https://sci-hub.ee/", "https://sci-hub.wf/"]
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-EMAIL = "claude@liance.art"
+EMAIL = os.environ.get("RESEARCH_CONTACT_EMAIL", "anonymous@example.org")
 
-PROJECT_AUTHORS = {"MMA", "AMEI", "MARBLE", "MusicBERT", "HaMSE", "HaMSE Ontology", "MuseTok",
-                   "GTTM", "TAG", "CCG", "Group", "Bayésienne", "Supervisée", "Anonymous"}
+
+def _load_project_authors() -> set[str]:
+    """Charge la whitelist d'auteurs/groupes spécifiques au projet.
+
+    Source : `$XDG_CONFIG_HOME/paper-trail/project_authors.txt` (défaut
+    `~/.config/paper-trail/project_authors.txt`). Un identifiant par ligne,
+    `#` pour commentaires. Vide si le fichier n'existe pas.
+    """
+    xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    path = Path(xdg) / "paper-trail" / "project_authors.txt"
+    if not path.exists():
+        return set()
+    out = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            out.add(line)
+    return out
+
+
+PROJECT_AUTHORS = _load_project_authors()
 
 
 def log(msg):
@@ -105,7 +140,7 @@ def s2_search(author, title, year, limit=5):
                 "limit": limit,
                 "fields": "title,authors,year,openAccessPdf,externalIds,venue",
             },
-            headers={"x-api-key": S2_API_KEY, "User-Agent": UA},
+            headers={"User-Agent": UA, **({"x-api-key": S2_API_KEY} if S2_API_KEY else {})},
             timeout=20,
         )
         if r.status_code == 200:
@@ -218,7 +253,7 @@ def clean(s):
 
 def parse_md():
     refs = {}
-    lines = MD_PATH.read_text(encoding="utf-8").splitlines()
+    lines = _md_path().read_text(encoding="utf-8").splitlines()
     section = None; b = d = 0
     for i, line in enumerate(lines, 1):
         s = line.strip()
@@ -254,8 +289,8 @@ def target_dir(ref):
     c = ref.get("cible", "")
     m = re.match(r"(\d+_Biblio_\w+)/Sources/?", c)
     if m:
-        return OBSIDIAN_ROOT / "10_SOURCES" / m.group(1) / "Sources"
-    return OBSIDIAN_ROOT / "10_SOURCES" / "13_Biblio_Maths" / "Sources"
+        return _obsidian_root() / "10_SOURCES" / m.group(1) / "Sources"
+    return _obsidian_root() / "10_SOURCES" / "13_Biblio_Maths" / "Sources"
 
 
 def make_filename(ref):
@@ -276,7 +311,7 @@ def main():
     log("=" * 70)
     log(f"S2 resolver — {datetime.now().isoformat()}")
     log("=" * 70)
-    status = json.loads(STATUS_JSON.read_text(encoding="utf-8"))
+    status = json.loads(_status_json().read_text(encoding="utf-8"))
     refs = parse_md()
     fails = [(k, v) for k, v in status["refs"].items() if v["status"] == "failed"]
     log(f"Fails à retraiter : {len(fails)}")
@@ -362,10 +397,10 @@ def main():
         time.sleep(1.1)
 
         if i % 20 == 0:
-            STATUS_JSON.write_text(json.dumps(status, ensure_ascii=False, indent=1), encoding="utf-8")
+            _status_json().write_text(json.dumps(status, ensure_ascii=False, indent=1), encoding="utf-8")
             log(f"   [checkpoint S2 : {recovered} DL / {new_metadata} new_metadata / {new_no_match} new_no_match]")
 
-    STATUS_JSON.write_text(json.dumps(status, ensure_ascii=False, indent=1), encoding="utf-8")
+    _status_json().write_text(json.dumps(status, ensure_ascii=False, indent=1), encoding="utf-8")
     log("\n" + "=" * 70)
     log(f"BILAN S2 : {recovered} récupérés / {new_metadata} metadata enrichie / {new_no_match} confirmed no_match / {len(candidates)} candidats")
     log("=" * 70)

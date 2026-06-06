@@ -5,6 +5,48 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7] — 2026-06-06
+
+Sécurité + portabilité : suppression de tout chemin hardcodé et de la
+clé API leakée dans le code. Le plugin est désormais utilisable sur
+n'importe quelle machine après configuration des variables
+d'environnement.
+
+### Security
+
+- **Clé Semantic Scholar retirée du code source.** `lib/s2_resolver.py`
+  exposait une clé en clair (commit public). Désormais lue depuis
+  `S2_API_KEY` (env var). **La clé précédente doit être révoquée côté
+  Semantic Scholar.**
+
+### Changed (breaking pour les installations existantes)
+
+- **`pipeline/config.py`** : suppression de `_DEFAULT_VAULT` (le chemin
+  `/mnt/d/Obsidian/Articles/Projets/Ontologie musicale`). Si
+  `RESEARCH_VAULT_PATH` n'est pas défini, le plugin lève `ConfigError`
+  avec un message d'aide explicite au lieu de retomber silencieusement
+  sur un chemin tiers.
+- **`lib/s2_resolver.py`** : `STATUS_JSON`, `MD_PATH`, `OBSIDIAN_ROOT`
+  dérivés du vault configuré au lieu d'être hardcodés. `EMAIL`
+  paramétrable via `RESEARCH_CONTACT_EMAIL`.
+- **`PROJECT_AUTHORS`** : whitelist musicology-spécifique externalisée
+  vers `~/.config/paper-trail/project_authors.txt` (vide par défaut).
+- **`RTFM_DB`** : devient optionnel (env var `RESEARCH_RTFM_DB`). Les
+  modules consommateurs (`rtfm_failures`, `ingest`) ignorent
+  proprement son absence.
+- **`pipeline/tests/test_f1_negative.py`** : test rendu portable
+  (skip si la ref de référence n'existe pas, override possible via
+  `RESEARCH_F1_NEGATIVE_REF`).
+
+### Added
+
+- **`conftest.py`** à la racine — fournit un défaut neutre
+  (`/tmp/paper-trail-test-vault`) pour `RESEARCH_VAULT_PATH` pendant
+  pytest, sans contaminer un vault réel.
+- **`INSTALL.md`** — documentation complète des variables
+  d'environnement, du fichier de whitelist optionnel et de la
+  procédure de vérification.
+
 ## [0.2.0] — 2026-05-28
 
 Major rework of the INGEST pipeline : split into 4 orthogonal passes
