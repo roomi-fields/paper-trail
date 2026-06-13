@@ -5,6 +5,52 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.9] — 2026-06-13
+
+Retour terrain d'une session fraîche : friction d'installation et
+MCP `paper-search`. Sept améliorations UX pour un démarrage propre
+dans un nouveau projet.
+
+### Added
+
+- **`pipeline preflight`.** Nouvelle sous-commande qui vérifie
+  l'environnement avant de lancer une session : vault path,
+  permissions, dépendances Python, présence du binaire `git`,
+  enregistrement du MCP `paper-search` dans Claude Code, variables
+  optionnelles. Tourne **sans** `RESEARCH_VAULT_PATH` (c'est
+  précisément ce qu'elle diagnostique). Sortie texte humain ou
+  `--json`. Chaque erreur/warning imprime la commande exacte pour
+  corriger.
+- **Config globale `~/.config/paper-trail/env`.** Chargée
+  automatiquement à l'import de `pipeline.config` (XDG-aware). Les
+  variables shell/projet gardent la priorité. Permet de définir une
+  fois `S2_API_KEY`, `RESEARCH_CONTACT_EMAIL`, `RESEARCH_VAULT_PATH`
+  et de les voir s'appliquer à tous les projets sans recopier dans
+  chaque `.env`.
+
+### Changed
+
+- **`INSTALL.md` réécrit.** Section explicite « Install the
+  `paper-search` MCP » avec la commande exacte (`uv venv` + git URL +
+  `claude mcp add`) et un avertissement contre PyPI obsolète (13 outils
+  au lieu de 63 sur git HEAD). Section troubleshooting (No executables,
+  ModuleNotFoundError pypdf, TypeError max_results, MCP non listé).
+  Section config globale `~/.config/paper-trail/env` pour secrets
+  réutilisables.
+- **`README.md`.** Tableau MCP refondu : paper-search marqué
+  **Required**, lien direct vers la recette d'install. Section Quick
+  start mise à jour avec la config globale et la commande de vérif
+  `pipeline preflight`.
+- **Skill `sota-writer`.** Étape pré-vol mandatoire avant phase A.
+  Signatures correctes documentées (`max_results_per_source`, pas
+  `max_results`) pour éviter le TypeError au premier appel.
+- **Commande `/paper-trail:new-sota`.** Étape 0 ajoutée : invoque
+  `pipeline preflight` avant de lancer le sota-writer ; halte +
+  recette si le MCP n'est pas enregistré.
+- **`ConfigError` plus utile.** Le message liste les trois options
+  (shell, `~/.config/paper-trail/env`, `.env` de projet) au lieu de la
+  seule variable shell.
+
 ## [0.3.8] — 2026-06-06
 
 Retours terrain d'un projet tiers utilisant le plugin sur un layout flat

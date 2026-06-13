@@ -25,19 +25,62 @@ class ConfigError(RuntimeError):
     """Configuration manquante ou invalide."""
 
 
+def _load_user_config_file() -> None:
+    """Charge ~/.config/paper-trail/env si présent.
+
+    Format : `KEY=VALUE` par ligne, `#` pour commentaire, espaces tolérés.
+    Les variables déjà définies dans l'environnement courant gardent la
+    priorité (le fichier ne réécrit jamais une valeur explicite).
+
+    Utilité : éviter à l'utilisateur de redéfinir S2_API_KEY,
+    RESEARCH_CONTACT_EMAIL, RESEARCH_VAULT_PATH, etc. dans chaque projet.
+    Idéal pour les secrets et préférences globales.
+    """
+    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    cfg_path = Path(xdg) / "paper-trail" / "env"
+    if not cfg_path.is_file():
+        return
+    try:
+        for raw in cfg_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if not key:
+                continue
+            os.environ.setdefault(key, value)
+    except OSError:
+        # Lecture impossible — on ignore silencieusement, ce n'est qu'un
+        # commodity loader.
+        pass
+
+
+_load_user_config_file()
+
 _RAW_VAULT = os.environ.get("RESEARCH_VAULT_PATH")
 if not _RAW_VAULT:
     raise ConfigError(
         "RESEARCH_VAULT_PATH n'est pas défini.\n"
         "\n"
         "Le plugin paper-trail a besoin de connaître la racine de votre vault.\n"
-        "Définissez-la dans votre shell, par exemple :\n"
+        "Trois options :\n"
         "\n"
-        "    export RESEARCH_VAULT_PATH=\"$HOME/Documents/MyResearch\"\n"
+        "  1. Variable d'environnement shell (par session) :\n"
+        "       export RESEARCH_VAULT_PATH=\"$HOME/Documents/MyResearch\"\n"
         "\n"
-        "Variables optionnelles : RESEARCH_SOURCES_PATH, RESEARCH_REGISTRY_PATH,\n"
-        "RESEARCH_RTFM_DB, RESEARCH_CONTACT_EMAIL, S2_API_KEY.\n"
-        "Voir INSTALL.md pour la liste complète."
+        "  2. Variable globale dans ~/.config/paper-trail/env (recommandé\n"
+        "     pour les secrets et préférences réutilisées entre projets) :\n"
+        "       RESEARCH_VAULT_PATH=~/Documents/MyResearch\n"
+        "       S2_API_KEY=...\n"
+        "       RESEARCH_CONTACT_EMAIL=you@example.org\n"
+        "\n"
+        "  3. .env de projet sourcé avant de lancer Claude Code.\n"
+        "\n"
+        "Voir INSTALL.md pour la liste complète des variables."
     )
 
 VAULT = Path(_RAW_VAULT)

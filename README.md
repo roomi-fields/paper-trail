@@ -76,13 +76,18 @@ disclaimer prints to stderr on first use. The user is responsible
 for legal compliance in their jurisdiction. See
 [`DISCLAIMER.md`](DISCLAIMER.md).
 
-### Local indexing (optional MCP integrations)
+### MCP integrations
 
-| Source | Coverage | Activation |
+| MCP | Coverage | Status |
 |---|---|---|
-| **paper-search MCP** | Unified API over 22 platforms above | Configure in `~/.claude/mcp.json` |
-| **NotebookLM MCP** | Books corpus (Q&A with citations) | `RESEARCH_ENABLE_NOTEBOOKLM=1` + MCP config |
-| **RTFM MCP** | Local indexed corpus (code, docs, research) | Configure in `~/.claude/mcp.json` |
+| **paper-search MCP** | Unified API over 22 platforms above | **Required** for SOTA writing — install from git (see [`INSTALL.md`](INSTALL.md)) |
+| **NotebookLM MCP** | Books corpus (Q&A with citations) | Optional — `RESEARCH_ENABLE_NOTEBOOKLM=1` |
+| **RTFM MCP** | Local indexed corpus (code, docs, research) | Optional — failure correlation only |
+
+> ⚠️ **Do not install `paper-search-mcp` from PyPI** — the published
+> version (`0.1.3`) is severely outdated (13 / 63 tools, no OpenAlex,
+> no Crossref, no Semantic Scholar). Use the git HEAD recipe in
+> [`INSTALL.md`](INSTALL.md#install-the-paper-search-mcp-required-for-sota-writing).
 
 ## Quick start
 
@@ -104,15 +109,32 @@ Or via marketplace (when published):
 ### Configure
 
 `RESEARCH_VAULT_PATH` is **required** — the plugin refuses to start
-without it and prints how to fix it. Add to your shell profile (or a
-project `.env` you source before launching Claude Code):
+without it. Set it (and any reusable secret like `S2_API_KEY`) **once**
+in `~/.config/paper-trail/env` so every project picks them up
+automatically :
 
 ```bash
-export RESEARCH_VAULT_PATH=/path/to/your/vault
-export RESEARCH_VAULT_LAYOUT=obsidian   # or 'flat' or 'zotero' (V2)
+mkdir -p ~/.config/paper-trail
+cat > ~/.config/paper-trail/env <<'EOF'
+RESEARCH_VAULT_PATH=~/Documents/MyResearch
+RESEARCH_CONTACT_EMAIL=you@example.org
+S2_API_KEY=s2k-...
+EOF
+chmod 600 ~/.config/paper-trail/env
 ```
 
-For complete configuration, see [`INSTALL.md`](INSTALL.md).
+Per-project shell overrides take priority. For complete configuration,
+see [`INSTALL.md`](INSTALL.md).
+
+### Verify install
+
+```bash
+python3 -m pipeline preflight
+```
+
+Reports vault, Python deps, `paper-search` MCP registration, and any
+missing optional secret — with a copy-pastable fix command for each
+problem.
 
 ### Try it
 

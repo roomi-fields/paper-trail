@@ -80,6 +80,19 @@ D. WRITING FROM NOTES ONLY
 
 ## Phase A — Exhaustive research
 
+### Pre-flight (mandatory, fast)
+
+Before issuing any search call, run :
+
+```bash
+python3 -m pipeline preflight
+```
+
+If it reports `paper-search MCP non enregistré`, **stop and ask the user
+to install it** — the recipe is printed in the preflight output. Do NOT
+fall back to other searches without notifying the user : the cascade
+and downstream phases need the unified multi-platform API.
+
 ### Tools by question type
 
 | Question type | Priority tool |
@@ -93,6 +106,23 @@ D. WRITING FROM NOTES ONLY
 | Local project corpus | `mcp__rtfm__rtfm_search`, `mcp__rtfm__rtfm_context` |
 | Books (theory, domain-specific) | `mcp__notebooklm__notebook_ask` (if configured) |
 | Course pages, personal sites | `WebSearch` |
+
+### Correct call signatures (avoid TypeError)
+
+The unified `search_papers` tool expects `max_results_per_source`, NOT
+`max_results` :
+
+```
+mcp__paper-search__search_papers(
+    query="your topic",
+    max_results_per_source=10,
+    sources=["openalex", "crossref", "semantic", "arxiv"],
+)
+```
+
+Per-platform tools (`search_arxiv`, `search_semantic`, etc.) typically
+accept `max_results` directly. When in doubt, omit the limit on the
+first call and inspect the response shape.
 
 ### Phase A output
 

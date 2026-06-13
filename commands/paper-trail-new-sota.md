@@ -17,6 +17,11 @@ review on a given topic.
 
 ## What it does
 
+0. **Pré-vol** : invoke `python3 -m pipeline preflight` to verify the
+   environment (vault path, Python deps, `paper-search` MCP registered).
+   If pre-flight reports `paper-search MCP non enregistré`, **halt and
+   show the install recipe printed by preflight** before going further.
+   The user must install the MCP, restart Claude Code, then re-run.
 1. **Phase A — Research** : invokes `researcher` sub-agent for
    multi-source academic search (paper-search MCP across 22
    platforms ; optionally NotebookLM + WebSearch)
