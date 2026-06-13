@@ -5,6 +5,34 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.12] — 2026-06-13
+
+Retour terrain : la validation finale du SOTA bloquait à tort, signalant
+20 citations « en texte libre » et 3 wikilinks « absents du registre »
+alors que tout était correct. Trois bugs cumulés dans les hooks
+PreToolUse.
+
+### Fixed
+
+- **Faux positif I22 quand le hook n'hérite pas de `RESEARCH_VAULT_PATH`.**
+  Le hook chargeait le registre via `iter_refs`, attrapait toute
+  exception en silence et concluait « registre vide » → tous les
+  wikilinks d'un SOTA légitime étaient flagués « absents ». Désormais,
+  les hooks chargent eux-mêmes `~/.config/paper-trail/env` au démarrage,
+  AVANT d'importer `pipeline.config`. Et si le registre reste
+  inaccessible, ils impriment un message clair et **désactivent**
+  proprement les checks I22/I23 au lieu de bloquer.
+- **Regex I21 acceptait `[[slug]]` mais pas `[[slug|texte affiché]]`.**
+  Le wikilink Obsidian avec alias (forme idiomatique pour afficher
+  « Auteur Année » au lecteur tout en pointant vers le slug) était
+  considéré comme manquant. Mêmes lignes flagées I21 alors qu'elles
+  contenaient bien une citation liée. Corrigé dans le hook
+  `pre_save_sota_check.py` et dans `pipeline/invariants.py` (I20, I21).
+- **Diagnostic explicite au lieu de blocage silencieux.** Les deux
+  hooks PreToolUse impriment maintenant un message clair sur stderr
+  quand le registre est inaccessible, en pointant vers la solution
+  (`~/.config/paper-trail/env`).
+
 ## [0.3.11] — 2026-06-13
 
 Retour terrain v0.3.10 : 10 refs encore ratées, dont des accès libres

@@ -25,15 +25,27 @@ import re
 import sys
 from pathlib import Path
 
+# Bootstrap : charge la config globale AVANT tout import qui dépend
+# de RESEARCH_VAULT_PATH. Évite les faux positifs I22 quand Claude Code
+# n'a pas hérité de la variable d'environnement shell.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _hook_env import load_user_env  # noqa: E402
+load_user_env()
+
 _CITATION_LINE_RE = re.compile(
     r"^\s*(?:[-*+]|\d+\.)\s+.*\b(19|20)\d{2}\b.+$",
     re.MULTILINE,
 )
+# Match les trois formes de citation :
+#   [[slug]]                    (Obsidian simple)
+#   [[slug|display]]            (Obsidian piped, alias)
+#   [display](path/slug.md)     (flat markdown link)
 _HAS_WIKILINK_RE = re.compile(
-    r"\[\[[a-z0-9_]+\]\]"
+    r"\[\[[a-z0-9_]+(?:\|[^\]]+)?\]\]"
     r"|\]\((?:[^)]*?/)?[a-z0-9_]+\.md\)"
 )
-_WIKILINK_RE = re.compile(r"\[\[([a-z0-9_]+)\]\]")
+# Extraction du slug — couvre [[slug]] ET [[slug|display]]
+_WIKILINK_RE = re.compile(r"\[\[([a-z0-9_]+)(?:\|[^\]]+)?\]\]")
 _REF_SLUG_RE = re.compile(r"^[a-z][a-z0-9]*_(19|20)\d{2}_[a-z0-9_]+$")
 
 
@@ -72,24 +84,42 @@ def main() -> int:
     sys.path.insert(0, plugin_root)
     registry_slugs: set[str] = set()
     retracted_slugs: set[str] = set()
+    registry_load_error: str | None = None
     try:
         from pipeline.registry import iter_refs
         for ref in iter_refs():
             registry_slugs.add(ref.slug)
             if ref.state == "retracted":
                 retracted_slugs.add(ref.slug)
-    except Exception:
-        pass  # On ne peut pas vérifier I22/I23, mais on peut quand même I21
+    except Exception as e:
+        # Critique : si on ne peut PAS lire le registre, on doit absolument
+        # éviter de bloquer sur I22/I23, sinon TOUS les wikilinks d'un
+        # SOTA légitime sont flagués « absents » (faux positif massif).
+        # On garde I21 (qui ne dépend pas du registre).
+        registry_load_error = f"{type(e).__name__}: {str(e)[:200]}"
 
     wikilinks_in_content = set(_WIKILINK_RE.findall(content))
-    missing_refs = [
-        slug for slug in wikilinks_in_content
-        if _REF_SLUG_RE.match(slug) and slug not in registry_slugs
-    ]
-    retracted_cites = [
-        slug for slug in wikilinks_in_content
-        if slug in retracted_slugs
-    ]
+    if registry_load_error is None:
+        missing_refs = [
+            slug for slug in wikilinks_in_content
+            if _REF_SLUG_RE.match(slug) and slug not in registry_slugs
+        ]
+        retracted_cites = [
+            slug for slug in wikilinks_in_content
+            if slug in retracted_slugs
+        ]
+    else:
+        # Pas de check I22/I23 — on l'annonce explicitement, on ne ment
+        # pas avec un « rien à signaler ».
+        missing_refs = []
+        retracted_cites = []
+        print(
+            f"[paper-trail WARN] registre inaccessible — I22/I23 skippés.\n"
+            f"  Détail : {registry_load_error}\n"
+            f"  Astuce : définir RESEARCH_VAULT_PATH dans "
+            f"~/.config/paper-trail/env si ce n'est pas déjà fait.",
+            file=sys.stderr,
+        )
 
     errors = []
     if free_text_lines:

@@ -67,7 +67,7 @@ STATES_WITH_PDF = {
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}")
 _ISO_DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-_WIKILINK_RE = re.compile(r"\[\[([a-z0-9_]+)\]\]")
+_WIKILINK_RE = re.compile(r"\[\[([a-z0-9_]+)(?:\|[^\]]+)?\]\]")
 
 
 def _parse_iso(value) -> datetime | None:
@@ -941,7 +941,7 @@ def check_I19(ref: Ref, ctx: dict | None = None) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _ACTIVE_STATES_FOR_I20 = {"candidate", "uid_resolved", "awaiting_rtfm_ocr"}
-_WIKILINK_RE_I20 = re.compile(r"\[\[([a-z0-9_]+)\]\]")
+_WIKILINK_RE_I20 = re.compile(r"\[\[([a-z0-9_]+)(?:\|[^\]]+)?\]\]")
 
 # Patterns pour I21 : citations en texte libre détectables dans un SOTA
 # (sections candidates pour ingestion).
@@ -961,10 +961,11 @@ _CITATION_LINE_RE_I21 = re.compile(
 )
 # Pour exclure les lignes qui ont DÉJÀ une référence liée → considérées
 # comme ingérées. Reconnaît :
-#   - wikilink Obsidian : [[slug]]
+#   - wikilink Obsidian simple : [[slug]]
+#   - wikilink Obsidian aliasé : [[slug|texte affiché]]
 #   - lien markdown vers une fiche : [text](refs/slug.md) ou [text](slug.md)
 _HAS_WIKILINK_RE = re.compile(
-    r"\[\[[a-z0-9_]+\]\]"
+    r"\[\[[a-z0-9_]+(?:\|[^\]]+)?\]\]"
     r"|\]\((?:[^)]*?/)?[a-z0-9_]+\.md\)"
 )
 

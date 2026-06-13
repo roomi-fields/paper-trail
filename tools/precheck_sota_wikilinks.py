@@ -30,6 +30,17 @@ PLUGIN_ROOT = (
 )
 sys.path.insert(0, str(PLUGIN_ROOT))
 
+# Bootstrap : charge la config globale AVANT d'importer pipeline/adapters.
+# Sans ça, l'absence de RESEARCH_VAULT_PATH dans l'env du hook produit
+# soit une exception (skip silencieux) soit un registre vide (faux
+# positifs « ref absente »).
+sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
+try:
+    from _hook_env import load_user_env
+    load_user_env()
+except ImportError:
+    pass
+
 VALIDATED_STATES = {
     "page1_validated",
     "sota_cited_confirmed",
@@ -83,8 +94,18 @@ def main() -> int:
         for ref in iter_refs():
             refs_by_slug[ref.slug] = ref.state
     except Exception as e:
-        print(f"[paper-trail PreToolUse] registry read error : {e}",
-              file=sys.stderr)
+        # Critique : ne PAS bloquer en silence. Le hook ne peut pas
+        # vérifier les states des refs citées → on prévient l'utilisateur
+        # explicitement et on laisse passer le write (mieux un faux
+        # négatif passé qu'un faux positif bloquant légitime).
+        print(
+            f"[paper-trail PreToolUse] registre inaccessible — check "
+            f"désactivé.\n"
+            f"  Détail : {type(e).__name__}: {str(e)[:200]}\n"
+            f"  Astuce : ajouter RESEARCH_VAULT_PATH à "
+            f"~/.config/paper-trail/env.",
+            file=sys.stderr,
+        )
         return 0
 
     # Parse citations via temporary file (adapter.parse_citations expects
