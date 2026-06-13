@@ -5,6 +5,42 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.11] — 2026-06-13
+
+Retour terrain v0.3.10 : 10 refs encore ratées, dont des accès libres
+qui auraient dû passer. Quatre correctifs supplémentaires sur le fetcher
+HTTP et la validation page 1.
+
+### Added
+
+- **Override DOI dans la validation page 1.** Si le DOI attendu apparaît
+  dans la page 1 (ou les 6 premières pages) du PDF téléchargé, le
+  validateur accepte directement — court-circuite les checks titre /
+  auteur / off-domain qui produisent des faux négatifs sur les thèses
+  multilingues (titre FR, corps EN — Rodriguez 2025, Cheveigné…) et
+  les publications avec auteur principal différent du registre.
+
+### Changed
+
+- **Fetcher HTTP basé sur `requests` avec UA browser-like.** Le `_http_get`
+  utilisait `urllib` avec un UA générique, bloqué par de nombreux
+  dépôts (UMass SchoolWorks, KIT, TU Darmstadt). Nouveau : `requests`
+  avec User-Agent Chrome 124, Accept-Language, redirects suivis,
+  cookies. Fallback `urllib` si `requests` indisponible (tests isolés).
+- **Retry UA `curl` sur HTML inattendu.** Certains serveurs (JCMS, HAL,
+  journaux scientifiques) servent un viewer JS aux navigateurs et le
+  PDF brut aux downloaders ligne-de-commande. Le pipeline retry
+  maintenant avec un UA minimaliste `curl/7.88.0` quand la première
+  réponse (browser UA) est HTML et que le résolveur landing→PDF n'a
+  rien trouvé. Vu sur JCMS, HAL theses, Springer link parfois.
+
+### Fixed
+
+- **Compatible PDF JCMS / HAL theses / OJS galleys.** Combinaison du
+  retry curl UA + résolveur landing→PDF couvre maintenant Rodriguez
+  2025 (HAL EN-FR thesis), Vigliensoni 2022 (JCMS galley), et tout
+  serveur OJS / DSpace qui gate les navigateurs.
+
 ## [0.3.10] — 2026-06-13
 
 Retour terrain : un agent rapportait 13/57 PDFs ratés alors que la

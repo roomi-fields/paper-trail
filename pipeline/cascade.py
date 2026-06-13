@@ -51,18 +51,60 @@ def _arxiv_id(ref: Ref) -> str | None:
     return uid[6:].strip() if uid.startswith("arxiv:") else None
 
 
-def _http_get(url: str, timeout: int = 30, headers: dict | None = None) -> bytes | None:
-    import http.client
-    h = {"User-Agent": UA, "Accept": "application/pdf,*/*"}
-    if headers:
-        h.update(headers)
-    req = urllib.request.Request(url, headers=h)
+# UA browser-like : beaucoup de dépôts (UMass SchoolWorks, KIT, TU
+# Darmstadt, repos DSpace en général) filtrent les User-Agent qui ne
+# ressemblent pas à un navigateur réel. On présente un Chrome récent.
+_BROWSER_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+_BROWSER_HEADERS = {
+    "User-Agent": _BROWSER_UA,
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "application/pdf;q=0.95,*/*;q=0.8"
+    ),
+    "Accept-Language": "en-US,en;q=0.9,fr;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+}
+
+
+def _http_get(url: str, timeout: int = 30, headers: dict | None = None,
+              replace_headers: bool = False) -> bytes | None:
+    """GET tolérant. Préfère `requests` (cookies, redirects, headers normaux)
+    pour passer les anti-bots légers ; fallback urllib si indisponible.
+
+    Si `replace_headers=True`, les headers passés remplacent complètement
+    le set browser par défaut (utile pour mimer un client minimaliste
+    type curl).
+    """
+    if replace_headers and headers:
+        h = dict(headers)
+    else:
+        h = dict(_BROWSER_HEADERS)
+        if headers:
+            h.update(headers)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.read()
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError,
-            http.client.IncompleteRead, http.client.HTTPException):
-        return None
+        import requests
+        try:
+            r = requests.get(url, headers=h, timeout=timeout, allow_redirects=True)
+            if r.status_code >= 400:
+                return None
+            return r.content
+        except (requests.RequestException, requests.exceptions.SSLError):
+            return None
+    except ImportError:
+        # Fallback urllib (vault tests sans requests)
+        import http.client
+        req = urllib.request.Request(url, headers=h)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError,
+                http.client.IncompleteRead, http.client.HTTPException):
+            return None
 
 
 def _is_valid_pdf(data: bytes) -> bool:
@@ -142,18 +184,22 @@ def _resolve_pdf_url_from_html(html: bytes, base_url: str) -> str | None:
 
 def _http_get_pdf(url: str, timeout: int = 60,
                   headers: dict | None = None) -> tuple[bytes | None, dict]:
-    """GET qui suit une landing page HTML vers le vrai PDF (1 hop).
+    """GET qui suit une landing page HTML vers le vrai PDF.
 
     Retourne `(pdf_bytes_or_none, info_dict)`. `info_dict` contient :
       - `chain` : liste des URLs visitées (pour diagnostic)
-      - `resolved_via` : 'direct' | 'landing_meta' | 'landing_fail'
+      - `resolved_via` : 'direct' | 'landing_meta' | 'curl_ua_retry' | …
 
     Politique :
-      - GET initial. Si la réponse ressemble à un PDF, on la renvoie.
-      - Si la réponse ressemble à du HTML, on essaie d'en extraire un
-        lien PDF (citation_pdf_url, og:pdf, <a href="...pdf">). Si
-        trouvé, on GET ce lien-là avec `Referer: <url initial>`.
-      - Pas de hop n°2 (sécurité — évite les boucles).
+      1. GET initial avec UA navigateur.
+      2. Si PDF → on rend.
+      3. Si HTML → on parse citation_pdf_url / og:pdf / a href .pdf, on
+         retry sur l'URL trouvée avec Referer correct.
+      4. Si toujours HTML après hop, on retry l'URL d'origine avec UA
+         `curl` minimaliste : certains sites (JCMS et autres serveurs
+         de revues) servent un viewer JS aux navigateurs et le PDF
+         brut aux downloaders. Pas de redirection landing→PDF, juste
+         un changement d'UA.
     """
     chain = [url]
     data = _http_get(url, timeout=timeout, headers=headers)
@@ -164,21 +210,29 @@ def _http_get_pdf(url: str, timeout: int = 60,
         return data, {"chain": chain, "resolved_via": "direct"}
 
     if not _looks_like_html(data):
-        # Format inconnu — on remonte tel quel, _save_and_validate
-        # tranchera.
         return data, {"chain": chain, "resolved_via": "non_html_non_pdf"}
 
     resolved = _resolve_pdf_url_from_html(data, url)
-    if not resolved:
-        return None, {"chain": chain, "resolved_via": "landing_no_pdf_link"}
+    if resolved:
+        chain.append(resolved)
+        follow_headers = {"Referer": url}
+        if headers:
+            follow_headers = {**headers, **follow_headers}
+        pdf = _http_get(resolved, timeout=timeout, headers=follow_headers)
+        if pdf and _is_valid_pdf(pdf):
+            return pdf, {"chain": chain, "resolved_via": "landing_meta"}
 
-    chain.append(resolved)
-    follow_headers = {"Referer": url}
-    if headers:
-        follow_headers = {**headers, **follow_headers}
-    pdf = _http_get(resolved, timeout=timeout, headers=follow_headers)
-    if pdf and _is_valid_pdf(pdf):
-        return pdf, {"chain": chain, "resolved_via": "landing_meta"}
+    # Dernier essai : UA `curl` minimaliste. Quelques sites (JCMS,
+    # certains journaux scientifiques) renvoient le PDF brut aux
+    # downloaders ligne-de-commande et un viewer JS aux navigateurs.
+    curl_headers = {"User-Agent": "curl/7.88.0", "Accept": "*/*"}
+    if headers and headers.get("Referer"):
+        curl_headers["Referer"] = headers["Referer"]
+    data2 = _http_get(url, timeout=timeout, headers=curl_headers,
+                      replace_headers=True)
+    if data2 and _is_valid_pdf(data2):
+        return data2, {"chain": chain, "resolved_via": "curl_ua_retry"}
+
     return None, {"chain": chain, "resolved_via": "landing_dl_failed"}
 
 
@@ -251,6 +305,7 @@ def _validate_page1(pdf_path: Path, ref: Ref) -> tuple[bool, str]:
         expected_author=ref.frontmatter.get("author") or "",
         expected_year=str(ref.frontmatter.get("year") or ""),
         expected_title=ref.frontmatter.get("title") or "",
+        expected_doi=_doi(ref) or "",
     )
 
 

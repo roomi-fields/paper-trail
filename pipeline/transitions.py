@@ -15,6 +15,18 @@ from .registry import Ref, save_ref, append_state_history, append_acquisition_at
 from .config import SOURCES
 
 
+def _uid_doi(ref: Ref) -> str:
+    """Extrait le DOI de l'uid si c'est `doi:<…>`, sinon chaîne vide.
+
+    Utilisé pour passer `expected_doi` au validateur page 1 : un match
+    DOI dans le texte du PDF est une garantie d'identité forte qui
+    couvre les cas où le titre ne match pas (thèse multilingue,
+    publication translittérée, etc.).
+    """
+    uid = (ref.frontmatter.get("uid") or "").strip()
+    return uid[4:].strip() if uid.startswith("doi:") else ""
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # R8 auto-fix — drift detection sur `pdf_path`
 # ─────────────────────────────────────────────────────────────────────────────
@@ -483,6 +495,7 @@ def pdf_acquired_dispatch(ref: Ref) -> TransitionResult:
             expected_author=ref.frontmatter.get("author") or "",
             expected_year=str(ref.frontmatter.get("year") or ""),
             expected_title=ref.frontmatter.get("title") or "",
+            expected_doi=_uid_doi(ref),
         )
         log = {
             "at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -652,6 +665,7 @@ def awaiting_rtfm_ocr_dispatch(ref: Ref) -> TransitionResult:
             expected_author=ref.frontmatter.get("author") or "",
             expected_year=str(ref.frontmatter.get("year") or ""),
             expected_title=ref.frontmatter.get("title") or "",
+            expected_doi=_uid_doi(ref),
         )
         reason = f"{reason} [fallback_no_rtfm_chunks]"
     log = {

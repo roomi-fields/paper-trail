@@ -285,7 +285,8 @@ def detect_on_domain(text: str) -> list[str]:
 
 def validate_pdf_against_ref(pdf_path: Path, expected_author: str = "",
                               expected_year: str = "", expected_title: str = "",
-                              required_title_match: float = 0.0) -> tuple[bool, str]:
+                              required_title_match: float = 0.0,
+                              expected_doi: str = "") -> tuple[bool, str]:
     """Valide qu'un PDF correspond à la ref attendue.
 
     Args:
@@ -294,6 +295,10 @@ def validate_pdf_against_ref(pdf_path: Path, expected_author: str = "",
         expected_year: année attendue
         expected_title: titre attendu (similarité vs page 1)
         required_title_match: seuil min de similarité titre (0 = pas de check)
+        expected_doi: DOI attendu — si présent ET trouvé dans page 1 OU
+            les 6 premières pages, l'identité est garantie : on accepte
+            même si le titre ne match pas (cas thèse multilingue : titre
+            FR, corps EN — Rodriguez 2025, Cheveigné, etc.).
 
     Returns:
         (is_valid, reason). reason est explicite, à utiliser dans le tracking.
@@ -348,6 +353,21 @@ def validate_pdf_against_ref(pdf_path: Path, expected_author: str = "",
 
     off = detect_off_domain(text)
     on = detect_on_domain(text)
+
+    # Override DOI : si le DOI attendu apparaît dans la page 1 ou les
+    # 6 premières pages, l'identité du document est garantie. On lève
+    # tous les checks ultérieurs (titre, auteur, off-domain) qui peuvent
+    # produire des faux négatifs : thèse multilingue (titre FR, body EN),
+    # papier en collaboration avec auteur principal différent, etc.
+    if expected_doi:
+        doi_norm = expected_doi.strip().lower()
+        if doi_norm and doi_norm in text.lower():
+            return True, f"validated_via_doi_match_page1 [{doi_norm}]"
+        # Élargir à 6 pages pour les thèses où le DOI est en page de titre
+        # qui peut être après la couverture-image.
+        head6 = extract_head_pages(pdf_path, n_pages=6).lower()
+        if doi_norm and doi_norm in head6:
+            return True, f"validated_via_doi_match_head6 [{doi_norm}]"
 
     # Si off-domain détecté ET pas de on-domain → reject net
     if off and not on:

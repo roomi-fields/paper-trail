@@ -155,3 +155,66 @@ Skill: invokes `python -m pipeline reactivate-ocr`
   ref left in its previous state
 
 Each is logged in `acquisition_attempts[]` with `verdict` and `reason`.
+
+## Recovery when the cascade exhausts (NEW v0.3.11)
+
+When a ref ends in `blocked_human:cascade_exhausted_needs_manual`, the
+pipeline writes `_registry/_hints/<slug>.md` listing what was tried.
+**Don't grab the PDF outside the pipeline and dump it manually** —
+that breaks acquisition_attempts tracking, page 1 validation, and
+quarantine. Use one of three proper entry points :
+
+### Path A — You know an OA URL
+
+If a quick web search surfaces a working URL (HAL page, university
+deposit, NIME proceedings, author homepage), inject it via the slash
+command :
+
+```
+/paper-trail:inject-url <slug> https://example.edu/path/to/paper
+```
+
+This sets `oa_url:` in the ref frontmatter, unblocks the ref, re-runs
+the cascade. The `manual_oa_url` source is at the head of the cascade
+and benefits from the landing→PDF resolver (so a deposit page URL
+works — no need for the direct PDF URL).
+
+### Path B — `paper-search` MCP `download_with_fallback`
+
+For paywalled-but-on-RG / scidb references, the `paper-search` MCP
+handles ResearchGate, Sci-Hub fallback, and other anti-bot sites that
+our internal cascade can't reach :
+
+```python
+# Inside Claude Code, not bash :
+mcp__paper-search__download_with_fallback(
+    title="<title>",
+    doi="<doi>",
+    save_dir="/tmp/paper-trail-recovered",
+)
+```
+
+Then move the returned PDF to `10_SOURCES/<domain>/Sources/` and set
+the ref's `pdf_path` to its relative path. The next `pipeline run
+--ref <slug>` will pick it up via the local-PDF step and apply page 1
+validation.
+
+### Path C — You already have the PDF locally
+
+Just place it in `10_SOURCES/<domain>/Sources/` and edit the ref's
+frontmatter :
+
+```yaml
+pdf_path: 11_Biblio_MIR/Sources/Author_Year_Title.pdf
+```
+
+Then `python3 -m pipeline run --ref <slug>` will validate page 1.
+
+### What NOT to do
+
+- Don't bypass the registry by directly writing the file path into a
+  SOTA — the doctor will flag it as an unanchored citation.
+- Don't skip page 1 validation by manually editing `state:
+  page1_validated` in the frontmatter — homonymies will leak in.
+- Don't reach for `_check_local_pdf` from custom Python code — use the
+  three entry points above.
