@@ -5,6 +5,46 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.10] — 2026-06-13
+
+Retour terrain : un agent rapportait 13/57 PDFs ratés alors que la
+plupart sont en accès libre. Diagnostic : la cascade ne suivait pas
+les landing pages HTML servies par les dépôts universitaires (HAL,
+KIT, Darmstadt, NIME, eScholarship…), et n'offrait pas de point
+d'entrée propre quand l'agent connaissait l'URL.
+
+### Added
+
+- **Résolveur landing→PDF universel.** Quand une source de la cascade
+  reçoit du HTML au lieu d'un PDF, le pipeline parse maintenant
+  automatiquement la balise `<meta name="citation_pdf_url">` (norme
+  Highwire Press, supportée par la plupart des dépôts académiques),
+  `og:pdf` en repli, puis les liens `<a href="...pdf">` plausibles.
+  Suit le lien trouvé avec un en-tête `Referer` correct. Impact massif
+  sur HAL/KIT/Darmstadt/NIME/eScholarship — landing pages auparavant
+  comptées comme `no_source` deviennent maintenant des PDFs validés.
+- **Champ frontmatter `oa_url:`.** Permet d'injecter une URL OA connue
+  (page d'auteur, dépôt uni, NIME) quand la cascade automatique ne
+  trouve pas le bon PDF. Nouvelle source `manual_oa_url` placée en
+  TÊTE de cascade — essayée en premier, bénéficie du résolveur
+  landing→PDF.
+- **Commande `/paper-trail:inject-url <slug> <url>`.** Met `oa_url`
+  dans le frontmatter, débloque la ref si elle l'était, relance la
+  cascade ciblée. Évite à un agent de bricoler manuellement (téléchargement
+  hors pipeline, dépôt direct, perte de la métrique).
+- **Pistes actionnables sur cascade épuisée.** Quand la cascade
+  s'épuise, écrit `_hints/<slug>.md` à côté du registre listant les
+  deux points d'entrée propres : injecter `oa_url` ou poser le PDF
+  localement avec `pdf_path`. Le tableau « ce qui a été tenté » montre
+  exactement ce qui a échoué et pourquoi.
+
+### Changed
+
+- **HAL : fallback `/document`.** Si `fileMain_s` retourné par l'API
+  HAL renvoie du HTML, le pipeline réessaie sur l'URL canonique
+  `https://hal.science/<halId>/document` qui force la sortie PDF.
+  Couvre les cas où la première URL pointe vers un viewer.
+
 ## [0.3.9] — 2026-06-13
 
 Retour terrain d'une session fraîche : friction d'installation et

@@ -69,6 +69,119 @@ def _is_valid_pdf(data: bytes) -> bool:
     return bool(data) and data[:5] == b"%PDF-" and len(data) > 3000
 
 
+def _looks_like_html(data: bytes) -> bool:
+    """Heuristique : la réponse est une page HTML, pas un PDF."""
+    if not data:
+        return False
+    head = data[:1024].lstrip().lower()
+    return (
+        head.startswith(b"<!doctype html")
+        or head.startswith(b"<html")
+        or b"<head" in head[:512]
+    )
+
+
+def _resolve_pdf_url_from_html(html: bytes, base_url: str) -> str | None:
+    """Cherche le vrai PDF dans une landing page HTML.
+
+    Stratégie, par ordre de fiabilité :
+      1. `<meta name="citation_pdf_url" content="…">` — norme Highwire
+         Press supportée par HAL, KIT, Darmstadt, TU Berlin, NIME,
+         eScholarship, la plupart des dépôts universitaires.
+      2. `<meta property="og:pdf" …>` (rare mais existe).
+      3. Premier `<a href="…pdf">` qui ressemble à un lien de download
+         (mots-clés `download`, `pdf`, `fulltext`, `getfile`).
+
+    Résout les URLs relatives en absolues avec `base_url`.
+    Retourne `None` si aucun candidat plausible.
+    """
+    if not html:
+        return None
+    try:
+        text = html.decode("utf-8", errors="replace")
+    except Exception:
+        return None
+
+    import re
+    from urllib.parse import urljoin
+
+    # 1. citation_pdf_url (cas dominant)
+    m = re.search(
+        r'<meta[^>]+name=["\']citation_pdf_url["\'][^>]+content=["\']([^"\']+)["\']',
+        text, re.I,
+    )
+    if not m:
+        # Variante ordre des attributs (content avant name)
+        m = re.search(
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']citation_pdf_url["\']',
+            text, re.I,
+        )
+    if m:
+        return urljoin(base_url, m.group(1))
+
+    # 2. og:pdf
+    m = re.search(
+        r'<meta[^>]+property=["\']og:pdf["\'][^>]+content=["\']([^"\']+)["\']',
+        text, re.I,
+    )
+    if m:
+        return urljoin(base_url, m.group(1))
+
+    # 3. <a href="...pdf"> avec mots-clés download / fulltext / getfile
+    for m in re.finditer(
+        r'<a[^>]+href=["\']([^"\']+\.pdf[^"\']*)["\'][^>]*>([^<]{0,200})</a>',
+        text, re.I,
+    ):
+        href, label = m.group(1), m.group(2).lower()
+        signal = "download" in label or "full" in label or "pdf" in label
+        if signal or "/download" in href or "/getfile" in href.lower():
+            return urljoin(base_url, href)
+
+    return None
+
+
+def _http_get_pdf(url: str, timeout: int = 60,
+                  headers: dict | None = None) -> tuple[bytes | None, dict]:
+    """GET qui suit une landing page HTML vers le vrai PDF (1 hop).
+
+    Retourne `(pdf_bytes_or_none, info_dict)`. `info_dict` contient :
+      - `chain` : liste des URLs visitées (pour diagnostic)
+      - `resolved_via` : 'direct' | 'landing_meta' | 'landing_fail'
+
+    Politique :
+      - GET initial. Si la réponse ressemble à un PDF, on la renvoie.
+      - Si la réponse ressemble à du HTML, on essaie d'en extraire un
+        lien PDF (citation_pdf_url, og:pdf, <a href="...pdf">). Si
+        trouvé, on GET ce lien-là avec `Referer: <url initial>`.
+      - Pas de hop n°2 (sécurité — évite les boucles).
+    """
+    chain = [url]
+    data = _http_get(url, timeout=timeout, headers=headers)
+    if not data:
+        return None, {"chain": chain, "resolved_via": "no_response"}
+
+    if _is_valid_pdf(data):
+        return data, {"chain": chain, "resolved_via": "direct"}
+
+    if not _looks_like_html(data):
+        # Format inconnu — on remonte tel quel, _save_and_validate
+        # tranchera.
+        return data, {"chain": chain, "resolved_via": "non_html_non_pdf"}
+
+    resolved = _resolve_pdf_url_from_html(data, url)
+    if not resolved:
+        return None, {"chain": chain, "resolved_via": "landing_no_pdf_link"}
+
+    chain.append(resolved)
+    follow_headers = {"Referer": url}
+    if headers:
+        follow_headers = {**headers, **follow_headers}
+    pdf = _http_get(resolved, timeout=timeout, headers=follow_headers)
+    if pdf and _is_valid_pdf(pdf):
+        return pdf, {"chain": chain, "resolved_via": "landing_meta"}
+    return None, {"chain": chain, "resolved_via": "landing_dl_failed"}
+
+
 def _make_dest_path(ref: Ref) -> Path:
     """Chemin de destination dans `10_SOURCES/<domain>/Sources/`.
 
@@ -290,10 +403,39 @@ def try_crossref_oa(ref: Ref) -> tuple[str, dict]:
     if not pdf_urls:
         return "no_source", {"reason": "no_oa_url_in_crossref"}
     for url in pdf_urls[:3]:
-        pdf = _http_get(url, timeout=60)
+        pdf, _info = _http_get_pdf(url, timeout=60)
         if pdf:
             return _save_and_validate(pdf, ref)
     return "failed", {"reason": "all_oa_urls_failed"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Source 0 — `oa_url` injecté par l'utilisateur dans le frontmatter
+# ─────────────────────────────────────────────────────────────────────────────
+
+def try_manual_url(ref: Ref) -> tuple[str, dict]:
+    """F0 — URL fournie par l'utilisateur via le frontmatter `oa_url`.
+
+    Permet à l'utilisateur (ou à un agent) d'injecter une URL connue
+    quand la cascade automatique ne trouve pas le bon PDF (page d'auteur,
+    dépôt universitaire spécifique, NIME, KIT, etc.). Évite de devoir
+    bricoler manuellement le PDF.
+
+    Le résolveur landing→PDF s'applique : si l'URL renvoie une page HTML,
+    on suit `citation_pdf_url` automatiquement.
+    """
+    url = (ref.frontmatter.get("oa_url") or "").strip()
+    if not url:
+        return "no_source", {"reason": "no_oa_url_in_frontmatter"}
+    pdf, info = _http_get_pdf(url, timeout=60)
+    if not pdf:
+        return "failed", {"reason": "manual_url_dl_failed",
+                          "url": url, "trace": info}
+    r = _save_and_validate(pdf, ref)
+    if r[0] == "success":
+        r[1]["via"] = "manual_oa_url"
+        r[1]["chain"] = info.get("chain", [])
+    return r
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -341,9 +483,9 @@ def try_openalex(ref: Ref) -> tuple[str, dict]:
     oa = (work.get("open_access") or {}).get("oa_url") or work.get("oa_url")
     if not oa:
         return "no_source", {"reason": "no_oa_url"}
-    pdf = _http_get(oa, timeout=60)
+    pdf, info = _http_get_pdf(oa, timeout=60)
     if not pdf:
-        return "failed", {"reason": "openalex_oa_dl_failed"}
+        return "failed", {"reason": "openalex_oa_dl_failed", "trace": info}
     return _save_and_validate(pdf, ref)
 
 
@@ -363,7 +505,7 @@ def try_unpaywall(ref: Ref) -> tuple[str, dict]:
     if not urls:
         return "no_source", {"reason": "no_unpaywall_url"}
     for url in urls[:3]:
-        pdf = _http_get(url, timeout=60)
+        pdf, _info = _http_get_pdf(url, timeout=60)
         if pdf:
             return _save_and_validate(pdf, ref)
     return "failed", {"reason": "all_unpaywall_failed"}
@@ -389,14 +531,25 @@ def try_hal(ref: Ref) -> tuple[str, dict]:
         return "failed", {"reason": f"hal_api:{type(e).__name__}"}
     for d in docs:
         url = d.get("fileMain_s")
-        if not url:
-            continue
-        pdf = _http_get(url, timeout=60)
-        if pdf:
-            r = _save_and_validate(pdf, ref)
-            if r[0] in ("success", "page1_failed"):
-                r[1]["hal_id"] = d.get("halId_s")
-                return r
+        hal_id = d.get("halId_s")
+        # Tentative 1 : fileMain_s direct (avec résolveur landing→PDF)
+        if url:
+            pdf, _info = _http_get_pdf(url, timeout=60)
+            if pdf:
+                r = _save_and_validate(pdf, ref)
+                if r[0] in ("success", "page1_failed"):
+                    r[1]["hal_id"] = hal_id
+                    return r
+        # Tentative 2 : URL canonique /document (force la sortie PDF)
+        if hal_id:
+            doc_url = f"https://hal.science/{hal_id}/document"
+            pdf, _info = _http_get_pdf(doc_url, timeout=60)
+            if pdf:
+                r = _save_and_validate(pdf, ref)
+                if r[0] in ("success", "page1_failed"):
+                    r[1]["hal_id"] = hal_id
+                    r[1]["via"] = "hal_document_url"
+                    return r
     return "no_source", {"reason": "hal_no_match_or_no_file"}
 
 
@@ -411,7 +564,7 @@ def try_core(ref: Ref) -> tuple[str, dict]:
     except Exception as e:
         return "failed", {"reason": f"core_helper:{type(e).__name__}"}
     for url in urls[:2]:
-        pdf = _http_get(url, timeout=60)
+        pdf, _info = _http_get_pdf(url, timeout=60)
         if pdf:
             return _save_and_validate(pdf, ref)
     return "no_source", {"reason": "no_core_match"}
@@ -617,6 +770,7 @@ def _warn_shadow_disclaimer_once() -> None:
 def _build_cascade() -> list[tuple[str, Callable[[Ref], tuple[str, dict]]]]:
     """Construit la cascade — shadow libs conditionnelles via env var."""
     cascade = [
+        ("manual_oa_url", try_manual_url),  # F0 — URL fournie via frontmatter
         ("crossref_oa", try_crossref_oa),
         ("arxiv", try_arxiv),
         ("openalex_oa", try_openalex),

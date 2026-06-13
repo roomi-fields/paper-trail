@@ -325,8 +325,83 @@ def uid_resolved_to_pdf_acquired(ref: Ref) -> TransitionResult:
     # Cascade épuisée — on bascule en cascade_exhausted_needs_manual
     ref.frontmatter["blocked_by"] = "cascade_exhausted_needs_manual"
     save_ref(ref)
+    # Écrit un fichier de pistes à côté de la ref pour guider la résolution
+    # manuelle (deux entrées propres : oa_url ou pdf déposé localement).
+    _write_acquisition_hints(ref, attempts)
     return TransitionResult(False, "uid_resolved", None, "cascade_exhausted",
                             blocked_reason="all_9_sources_failed_or_skipped")
+
+
+def _write_acquisition_hints(ref: Ref, attempts: list[dict]) -> None:
+    """Écrit `_hints_<slug>.md` à côté de la ref quand la cascade épuise.
+
+    Le but : qu'un agent (ou l'utilisateur) sache exactement quels deux
+    points d'entrée propres sont disponibles, plutôt que de bricoler.
+    """
+    try:
+        from pathlib import Path
+        from .config import REFS
+        hints_dir = REFS.parent / "_hints"
+        hints_dir.mkdir(parents=True, exist_ok=True)
+        slug = ref.slug
+        path = hints_dir / f"{slug}.md"
+        title = ref.frontmatter.get("title", "")
+        author = ref.frontmatter.get("author", "")
+        year = ref.frontmatter.get("year", "")
+        lines = [
+            f"# Cascade épuisée pour `{slug}`",
+            "",
+            f"- **Author** : {author}",
+            f"- **Year** : {year}",
+            f"- **Title** : {title}",
+            "",
+            "## Deux points d'entrée propres",
+            "",
+            "### 1. Vous connaissez l'URL OA (HAL, dépôt uni, NIME, page perso…)",
+            "",
+            "Ajoutez `oa_url:` au frontmatter de la ref puis relancez :",
+            "",
+            "```yaml",
+            f"oa_url: https://hal.science/hal-XXXXXXXX/document",
+            "```",
+            "",
+            "```bash",
+            f"python3 -m pipeline run --ref {slug}",
+            "```",
+            "",
+            "Le résolveur landing→PDF suit automatiquement `citation_pdf_url`,",
+            "donc une URL de page de dépôt fonctionne (pas besoin du PDF direct).",
+            "",
+            "### 2. Vous avez le PDF en local",
+            "",
+            "Déposez-le dans `10_SOURCES/<domain>/Sources/` et renseignez le",
+            "chemin relatif dans le frontmatter, puis relancez :",
+            "",
+            "```yaml",
+            "pdf_path: 11_Biblio_MIR/Sources/Author_Year_Title.pdf",
+            "```",
+            "",
+            "La validation page 1 anti-homonymie sera appliquée comme pour",
+            "tout PDF acquis par la cascade.",
+            "",
+            "## Ce que la cascade a essayé",
+            "",
+            "| Source | Verdict | Détail |",
+            "|--------|---------|--------|",
+        ]
+        for a in attempts:
+            src = a.get("source", "?")
+            verdict = a.get("verdict", "?")
+            detail = a.get("reason") or a.get("trace", {}).get("resolved_via") or ""
+            if isinstance(detail, dict):
+                detail = str(detail)
+            detail = str(detail)[:80].replace("|", "\\|")
+            lines.append(f"| {src} | {verdict} | {detail} |")
+        lines.append("")
+        path.write_text("\n".join(lines), encoding="utf-8")
+    except Exception:
+        # L'écriture des pistes ne doit jamais casser la transition.
+        pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
