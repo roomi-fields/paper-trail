@@ -1,5 +1,5 @@
 ---
-description: Première passe du pipeline cible refondu (read-only). Produit un rapport d'identification : pour chaque mention citée dans le SOTA, indique si la fiche existe déjà au registre, son état actuel, si elle a un PDF, et l'action recommandée (réutiliser / créer / passer en revue). Ne modifie ni le SOTA ni le registre.
+description: "Première passe du pipeline cible refondu (read-only). Produit un rapport d'identification : pour chaque mention citée dans le SOTA, indique si la fiche existe déjà au registre, son état actuel, si elle a un PDF, et l'action recommandée (réutiliser / créer / passer en revue). Ne modifie ni le SOTA ni le registre."
 ---
 
 # `/paper-trail:identify <SOTA-path>` — Rapport d'identification (read-only)
