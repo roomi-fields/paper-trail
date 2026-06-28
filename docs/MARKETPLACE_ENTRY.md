@@ -14,7 +14,7 @@ Add the following object as a new entry in the `plugins` array
     "source": "url",
     "url": "https://github.com/roomi-fields/paper-trail.git"
   },
-  "description": "Anti-hallucination plugin for academic research. Create State-of-the-Art reviews / papers guaranteed without fabricated citations, audit existing SOTAs/articles (purge or warnings), validate via FSM 8 states + 10-source PDF cascade + page 1 anti-homonymy + 19 invariants. Generic workflow, Obsidian/flat/zotero adapters, Anna's Archive & Sci-Hub opt-in only.",
+  "description": "Anti-hallucination plugin for academic research. Create State-of-the-Art reviews / papers guaranteed without fabricated citations, audit existing SOTAs/articles (purge or warnings), validate via FSM 8 states + 10-source PDF cascade + page 1 anti-homonymy + 19 invariants. Generic workflow, Obsidian/flat/zotero adapters, optional extended acquisition sources disabled by default (explicit opt-in only).",
   "homepage": "https://github.com/roomi-fields/paper-trail",
   "category": "research",
   "keywords": [

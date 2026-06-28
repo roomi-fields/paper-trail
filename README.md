@@ -30,9 +30,9 @@ against the actual source text.
   against expected author, title, and domain keywords before
   acceptance
 - **10-source acquisition cascade** — Crossref OA, arXiv, OpenAlex,
-  Unpaywall, HAL, CORE, archive.org, WebSearch queue (+ Sci-Hub and
-  Anna's Archive available as **strict opt-in**, see
-  [`DISCLAIMER.md`](DISCLAIMER.md))
+  Unpaywall, HAL, CORE, archive.org, WebSearch queue (plus optional
+  extended sources, disabled by default and **strict opt-in** only —
+  see [`DISCLAIMER.md`](DISCLAIMER.md))
 - **19 mechanical invariants** — automated registry health check with
   safe auto-fix for cosmetic drift
 - **Inverted writing workflow** — researches and reads first, writes
