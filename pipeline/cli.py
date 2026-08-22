@@ -63,6 +63,23 @@ def cmd_lint(args: argparse.Namespace) -> int:
     return rc
 
 
+def _preflight_dependencies() -> list[str]:
+    """Vérifie les dépendances de la cascade avant de traiter la moindre ref.
+
+    Sans ce garde, un interpréteur sans `bs4` (venv oublié) fait planter
+    chaque ref l'une après l'autre : le récap affiche `blocked=N` et le
+    doctor ne dit rien du motif réel. Cf. issue #1.
+    """
+    missing = []
+    for module, package in (("bs4", "beautifulsoup4"), ("requests", "requests"),
+                            ("yaml", "PyYAML")):
+        try:
+            __import__(module)
+        except ImportError:
+            missing.append(package)
+    return missing
+
+
 def _clear_exhaustion_locks(verbose: bool = False) -> int:
     """Lève les verrous `cascade_exhausted_needs_manual` avant une passe.
 
@@ -93,6 +110,14 @@ def _run_one_pass(args: argparse.Namespace) -> dict:
     Mêmes filtres et logique que `cmd_run`, mais isolé pour permettre la
     réexécution en boucle (mode `--loop`).
     """
+    missing = _preflight_dependencies()
+    if missing:
+        print(f"[FATAL] dépendances manquantes : {', '.join(missing)} — "
+              f"`pip install {' '.join(missing)}` (ou lancer depuis le venv du plugin). "
+              f"Sans elles chaque ref planterait et serait comptée `blocked`.",
+              file=sys.stderr)
+        return {"planned": 0, "done": 0, "pending": 0, "blocked": 0,
+                "skipped_terminal": 0, "fatal": True}
     if getattr(args, "retry_exhausted", False):
         # Une seule levée, à la première passe : en mode --loop, relever les
         # verrous à chaque itération relancerait la cascade complète sur des
@@ -176,7 +201,15 @@ def _set_memory_limit(max_gb: float = 1.5) -> None:
     try:
         import resource
         max_bytes = int(max_gb * 1024 * 1024 * 1024)
-        resource.setrlimit(resource.RLIMIT_AS, (max_bytes, max_bytes))
+        # Limite DOUCE seulement : la limite dure d'origine est préservée.
+        # Sinon la borne devient irréversible pour le process, et un
+        # sous-processus légitimement gourmand en espace d'adressage — un
+        # navigateur en réserve des dizaines de Go — ne peut plus démarrer
+        # (les rlimits sont héritées par les fils).
+        _, hard = resource.getrlimit(resource.RLIMIT_AS)
+        if hard != resource.RLIM_INFINITY:
+            max_bytes = min(max_bytes, hard)
+        resource.setrlimit(resource.RLIMIT_AS, (max_bytes, hard))
     except (ImportError, ValueError, OSError):
         pass
 
@@ -194,6 +227,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     if not loop:
         stats = _run_one_pass(args)
+        if stats.get("fatal"):
+            return 1
         print()
         print(f"Récap session : planned={stats['planned']}  done={stats['done']}  "
               f"pending={stats['pending']}  blocked={stats['blocked']}  "
@@ -215,6 +250,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             iteration += 1
             print(f"\n# Loop iteration {iteration}/{max_iter}")
             stats = _run_one_pass(args)
+            if stats.get("fatal"):
+                return 1
             for k in total:
                 total[k] += stats[k]
             print(f"  → iteration {iteration} : done={stats['done']}  "

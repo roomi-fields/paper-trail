@@ -37,8 +37,10 @@ def _ref(**fm) -> Ref:
 
 @pytest.mark.parametrize("attempts", [
     [_att("skipped_breaker_open")],
-    [_att("no_slot_delivered")],
-    [_att("all_mirrors_no_slot")],
+    # `no_slot_delivered` / `all_mirrors_no_slot` sont des MOTIFS produits par
+    # la source par navigateur, pas des verdicts : le verdict reste `failed`.
+    [_att("failed", "no_slot_delivered")],
+    [_att("failed", "all_mirrors_no_slot")],
     [_att("failed", "annas_waitlist_no_slot_free")],
     [_att("failed", "http_502_bad_gateway")],
     [_att("failed", "openalex_rate_limited")],

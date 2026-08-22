@@ -363,10 +363,7 @@ def uid_resolved_to_pdf_acquired(ref: Ref) -> TransitionResult:
 # verdict — champ à valeurs fermées — et seulement ensuite sur le motif libre.
 #
 # Passager : rien à arbitrer, il suffit de réessayer plus tard.
-_TRANSIENT_VERDICTS = {
-    "skipped_breaker_open", "no_slot_delivered", "aucun_créneau",
-    "all_mirrors_no_slot",
-}
+_TRANSIENT_VERDICTS = {"skipped_breaker_open"}
 # Définitif : une nouvelle tentative identique redonnera le même résultat.
 # `skipped_already_rejected` en fait partie — la source re-livre le fichier
 # qu'on a déjà refusé en page 1 ; attendre n'y changera rien, c'est au
@@ -384,7 +381,7 @@ _TRANSIENT_REASON_RE = re.compile(
     r"(?<![0-9a-z])(?:"
     r"429|502|503|504"
     r"|waitlist|no_slot|quota|throttl\w*"
-    r"|rate[_ -]?limit\w*|too[_ ]many[_ ]requests"
+    r"|rate[_ -]?limit\w*|too[_ ]many[_ ]requests|budget_exhausted"
     r"|temporarily[_ ]unavailable|service[_ ]unavailable"
     r"|timeout|timed[_ ]out|connection[_ ]reset"
     r")(?![0-9a-z])",
