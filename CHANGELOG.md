@@ -5,7 +5,7 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.13] — 2026-08-23
 
 Retour terrain (7 SOTA, 95 refs, cf. issues #1 et #3) : la cascade Anna's
 Archive ne ramenait plus rien, et 29 refs parfaitement acquérables sont
@@ -65,10 +65,22 @@ comme un épuisement définitif.
   `pipeline run` vérifie désormais ses dépendances avant la première ref,
   échoue avec un message explicite et rend un code de sortie non nul.
 
+- **Descriptions de commandes non lues.** Les descriptions en tête des
+  fichiers de commande n'étaient pas entre guillemets : dès qu'elles
+  contenaient un deux-points, le fichier devenait illisible et la commande
+  disparaissait.
+
 ### Changed
 
 - `requirements.txt` : la ligne `playwright` (toujours optionnelle) documente
   l'installation du navigateur et le lancement sous `xvfb-run`.
+- Présentation neutre des sources étendues optionnelles dans la page de
+  présentation publique.
+
+### Added (documentation)
+
+- `PRIVACY.md` : aucune télémétrie, description honnête des flux de données
+  (quelles requêtes partent, vers quels services, avec quoi dedans).
 
 ## [0.3.12] — 2026-06-13
 
