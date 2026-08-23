@@ -63,12 +63,43 @@ def cmd_lint(args: argparse.Namespace) -> int:
     return rc
 
 
+def _clear_exhaustion_locks(verbose: bool = False) -> int:
+    """Lève les verrous `cascade_exhausted_needs_manual` avant une passe.
+
+    Sert les reprises automatiques (créneau libéré, nouvelle édition en
+    ligne, source ajoutée depuis) sans imposer un `arbitrate --decision
+    unblock` ref par ref. Ne touche à aucun autre `blocked_by` : les
+    verrous posés par un humain restent intacts.
+    """
+    from .registry import iter_refs, save_ref
+    n = 0
+    for ref in iter_refs():
+        if ref.frontmatter.get("blocked_by") == "cascade_exhausted_needs_manual":
+            ref.frontmatter.pop("blocked_by", None)
+            ref.frontmatter.pop("retry_after", None)
+            ref.frontmatter.pop("transient_retries", None)
+            save_ref(ref)
+            n += 1
+            if verbose:
+                print(f"[unblock] {ref.slug} : verrou cascade levé pour nouvelle tentative")
+    if n:
+        print(f"[retry-exhausted] {n} ref(s) déverrouillée(s) pour cette passe")
+    return n
+
+
 def _run_one_pass(args: argparse.Namespace) -> dict:
     """Une passe de transitions sur les refs actives. Retourne les compteurs.
 
     Mêmes filtres et logique que `cmd_run`, mais isolé pour permettre la
     réexécution en boucle (mode `--loop`).
     """
+    if getattr(args, "retry_exhausted", False):
+        # Une seule levée, à la première passe : en mode --loop, relever les
+        # verrous à chaque itération relancerait la cascade complète sur des
+        # refs définitivement épuisées, jusqu'à `--max-iterations` fois.
+        _clear_exhaustion_locks(verbose=getattr(args, "verbose", False))
+        args.retry_exhausted = False
+
     n_planned = 0
     n_done = 0
     n_blocked = 0
@@ -1290,6 +1321,10 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Skip le lint final")
     prn.add_argument("--no-doctor", action="store_true",
                      help="Skip les invariants doctor I1-I15 en fin de run")
+    prn.add_argument("--retry-exhausted", action="store_true",
+                     help="Lève les verrous `cascade_exhausted_needs_manual` "
+                          "avant la passe (reprise automatique ; les verrous "
+                          "posés par un humain ne sont pas touchés)")
     prn.add_argument("-v", "--verbose", action="store_true")
     prn.add_argument("--loop", action="store_true",
                      help="Boucle jusqu'à épuisement : re-run tant que des "
