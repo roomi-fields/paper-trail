@@ -21,6 +21,9 @@ Deux détails de protocole découverts au passage :
   - le lien partenaire n'apparaît sur la page du créneau qu'après ~20 s ;
     les créneaux (`/0/0` … `/0/3`) sont contingentés, on les essaie en série.
 
+Déploiement (conteneur sans écran, travail planifié) :
+voir `docs/ACQUISITION_HEADFUL.md`.
+
 Activation : `RESEARCH_ENABLE_SHADOW_LIBS=1` **et** Playwright installé
 (`pip install playwright && playwright install chromium`) **et** un
 affichage disponible (`$DISPLAY`, typiquement fourni par `xvfb-run`).
@@ -40,11 +43,14 @@ import os
 import re
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import quote
 
-from pipeline.registry import Ref
-
 from .mirrors import get_aa_mirrors
+
+if TYPE_CHECKING:  # `Ref` ne sert qu'aux annotations : l'importer vraiment
+    from pipeline.registry import Ref  # tirerait la config du vault, et le
+    # test d'environnement ci-dessus échouerait faute de `RESEARCH_VAULT_PATH`.
 
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/131.0.0.0 Safari/537.36")
