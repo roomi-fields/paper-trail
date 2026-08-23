@@ -7,6 +7,7 @@ et Chromium réserve des dizaines de Go d'espace d'adressage virtuel).
 """
 from __future__ import annotations
 
+import os
 import resource
 import sys
 from pathlib import Path
@@ -89,3 +90,20 @@ def test_borne_levee_puis_retablie():
 def test_budget_epuise_est_un_echec_passager():
     attempts = [{"verdict": "failed", "reason": "budget_exhausted_retry_later"}]
     assert _only_transient_failures(attempts) is True
+
+
+def test_test_denvironnement_sans_config_de_vault():
+    """Le test d'environnement documenté dans `docs/ACQUISITION_HEADFUL.md`
+    doit tourner dans un conteneur nu, avant toute configuration du vault :
+    importer le module ne doit donc tirer aucune dépendance de configuration.
+    """
+    import subprocess
+    code = ("import sys; sys.path.insert(0, %r);"
+            "from lib.shadow.annas_headful import available; print(available())"
+            % str(PROJ))
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("RESEARCH_VAULT_PATH", "DISPLAY")}
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                       text=True, env=env, timeout=60)
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "no_display_run_under_xvfb" in r.stdout

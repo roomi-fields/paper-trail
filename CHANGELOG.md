@@ -5,6 +5,20 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `docs/ACQUISITION_HEADFUL.md` : où faire tourner l'acquisition par
+  navigateur (conteneur sans écran, affichage virtuel, travail planifié),
+  avec recette d'image, points d'attention et test d'environnement.
+
+### Fixed
+
+- Le module de la source par navigateur n'a plus besoin de la configuration
+  du vault pour être importé : le test d'environnement documenté tourne dans
+  un conteneur nu, avant toute configuration.
+
 ## [0.3.13] — 2026-08-23
 
 Retour terrain (7 SOTA, 95 refs, cf. issues #1 et #3) : la cascade Anna's
