@@ -8,6 +8,7 @@ Chaque fonction `<from>_to_<to>(ref)` :
   5. retourne un TransitionResult pour le journal
 """
 from __future__ import annotations
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -312,6 +313,7 @@ def uid_resolved_to_pdf_acquired(ref: Ref) -> TransitionResult:
         ref.frontmatter["pdf_path"] = success["pdf_path"]
         ref.frontmatter["pdf_sha256"] = success["pdf_sha256"]
         ref.frontmatter.pop("retry_after", None)  # l'attente n'a plus lieu d'être
+        ref.frontmatter.pop("transient_retries", None)
         append_state_history(ref, "pdf_acquired", by="worker_b",
                              meta={"via": success["source"]})
         save_ref(ref)
@@ -357,43 +359,75 @@ def uid_resolved_to_pdf_acquired(ref: Ref) -> TransitionResult:
                             blocked_reason="all_9_sources_failed_or_skipped")
 
 
-# Verdicts et motifs qui traduisent une indisponibilité passagère : rien à
-# arbitrer, il suffit de réessayer plus tard.
+# Vocabulaire contrôlé des verdicts (cf. cascade.py). On classe d'abord sur le
+# verdict — champ à valeurs fermées — et seulement ensuite sur le motif libre.
+#
+# Passager : rien à arbitrer, il suffit de réessayer plus tard.
 _TRANSIENT_VERDICTS = {
     "skipped_breaker_open", "no_slot_delivered", "aucun_créneau",
-    "all_mirrors_no_slot", "skipped_already_rejected",
+    "all_mirrors_no_slot",
 }
-_TRANSIENT_HINTS = ("waitlist", "too many", "rate", "429", "502", "503",
-                    "timeout", "timed out", "temporarily")
+# Définitif : une nouvelle tentative identique redonnera le même résultat.
+# `skipped_already_rejected` en fait partie — la source re-livre le fichier
+# qu'on a déjà refusé en page 1 ; attendre n'y changera rien, c'est au
+# curateur de trancher.
+_DEFINITIVE_VERDICTS = {
+    "success", "page1_failed", "skipped_already_rejected",
+    "skipped_already_tried", "no_source", "scan_needs_ocr",
+}
+
+# Motifs passagers, cherchés uniquement dans le motif d'un verdict `failed`.
+# Frontières explicites (`_` et espace comptent comme séparateurs, pas les
+# chiffres ni les lettres) : sans elles, `pdf_too_small [1502B]` contiendrait
+# « 502 » et un titre comme « Heart Rate Variability » contiendrait « rate ».
+_TRANSIENT_REASON_RE = re.compile(
+    r"(?<![0-9a-z])(?:"
+    r"429|502|503|504"
+    r"|waitlist|no_slot|quota|throttl\w*"
+    r"|rate[_ -]?limit\w*|too[_ ]many[_ ]requests"
+    r"|temporarily[_ ]unavailable|service[_ ]unavailable"
+    r"|timeout|timed[_ ]out|connection[_ ]reset"
+    r")(?![0-9a-z])",
+    re.IGNORECASE,
+)
 
 
 def _only_transient_failures(attempts: list[dict]) -> bool:
     """Vrai si cette passe n'a rencontré que des indisponibilités passagères.
 
     Prudence volontaire : la moindre trace d'échec définitif (404, absence
-    de source, page 1 refusée) rend la fonction fausse — on retombe alors
-    sur le verrou curateur, comportement historique.
+    de source, page 1 refusée, fichier déjà refusé) rend la fonction fausse
+    — on retombe alors sur le verrou curateur, comportement historique.
+    Un verdict inconnu est traité comme définitif.
     """
     if not attempts:
         return False
     seen_transient = False
     for a in attempts:
         verdict = str(a.get("verdict") or "")
-        reason = str(a.get("reason") or "").lower()
-        if verdict == "success":
+        reason = str(a.get("reason") or "")
+        if verdict in _DEFINITIVE_VERDICTS:
             return False
-        if verdict in _TRANSIENT_VERDICTS or any(h in reason for h in _TRANSIENT_HINTS):
+        if verdict in _TRANSIENT_VERDICTS:
             seen_transient = True
             continue
-        return False  # échec définitif → arbitrage humain justifié
+        if verdict == "failed" and _TRANSIENT_REASON_RE.search(reason):
+            seen_transient = True
+            continue
+        return False  # échec définitif ou verdict inconnu → arbitrage humain
     return seen_transient
 
 
 def _backoff_stamp(ref: Ref) -> str:
-    """Prochaine tentative possible : recul progressif 15 min → 8 h."""
-    from datetime import datetime, timedelta, timezone
-    n = sum(1 for h in (ref.frontmatter.get("state_history") or [])
-            if (h.get("meta") or {}).get("transient_retry"))
+    """Prochaine tentative possible : recul progressif 15 min → 8 h.
+
+    Le compteur d'attentes consécutives vit dans le frontmatter
+    (`transient_retries`) ; il est remis à zéro dès que la ref est acquise
+    ou déverrouillée à la main.
+    """
+    from datetime import timedelta
+    n = int(ref.frontmatter.get("transient_retries") or 0)
+    ref.frontmatter["transient_retries"] = n + 1
     minutes = min(15 * (2 ** n), 480)
     return (datetime.now(timezone.utc) + timedelta(minutes=minutes)).strftime(
         "%Y-%m-%dT%H:%M:%SZ")

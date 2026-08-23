@@ -29,6 +29,18 @@ traité comme un épuisement définitif. Cf. issue #3.
   définitif apparaît (404, page 1 refusée, aucune source), le
   comportement historique — verrou et arbitrage humain — s'applique.
 - **`retry_after` est effacé** dès que la ref est acquise.
+- La classification passager/définitif s'appuie sur le verdict (vocabulaire
+  fermé) avant le motif (texte libre). Un verdict inconnu est traité comme
+  définitif. Le fichier déjà refusé en page 1 (`skipped_already_rejected`)
+  est définitif : la source re-livre le même fichier, attendre n'y change
+  rien. Les motifs passagers sont cherchés avec des frontières explicites,
+  pour que `pdf_too_small [1502B]` ne passe pas pour un 502 et qu'un titre
+  contenant « rate » ne passe pas pour un quota dépassé.
+- Le recul progressif s'appuie sur un compteur d'attentes consécutives
+  (`transient_retries`), remis à zéro à l'acquisition et au déverrouillage.
+- `--retry-exhausted` ne lève les verrous qu'à la première passe : en mode
+  `--loop`, les relever à chaque itération relançait la cascade complète
+  sur des refs définitivement épuisées.
 
 ## [0.3.12] — 2026-06-13
 

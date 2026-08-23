@@ -77,6 +77,7 @@ def _clear_exhaustion_locks(verbose: bool = False) -> int:
         if ref.frontmatter.get("blocked_by") == "cascade_exhausted_needs_manual":
             ref.frontmatter.pop("blocked_by", None)
             ref.frontmatter.pop("retry_after", None)
+            ref.frontmatter.pop("transient_retries", None)
             save_ref(ref)
             n += 1
             if verbose:
@@ -93,7 +94,11 @@ def _run_one_pass(args: argparse.Namespace) -> dict:
     réexécution en boucle (mode `--loop`).
     """
     if getattr(args, "retry_exhausted", False):
+        # Une seule levée, à la première passe : en mode --loop, relever les
+        # verrous à chaque itération relancerait la cascade complète sur des
+        # refs définitivement épuisées, jusqu'à `--max-iterations` fois.
         _clear_exhaustion_locks(verbose=getattr(args, "verbose", False))
+        args.retry_exhausted = False
 
     n_planned = 0
     n_done = 0
