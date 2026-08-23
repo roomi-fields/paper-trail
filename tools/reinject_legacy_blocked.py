@@ -74,9 +74,9 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--apply", action="store_true",
-                   help="Applique les mutations (par défaut : dry-run)")
+                   help="Apply the mutations (default: dry-run)")
     p.add_argument("--limit", type=int, default=0,
-                   help="Cap sur le nombre de refs traitées (0 = pas de limite)")
+                   help="Cap on the number of refs processed (0 = no limit)")
     args = p.parse_args()
 
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -88,19 +88,19 @@ def main() -> int:
         if args.limit and len(targets) >= args.limit:
             break
 
-    print(f"# Réinjection legacy_blocked — {len(targets)} ref(s) cible(s)")
+    print(f"# legacy_blocked reinjection — {len(targets)} target ref(s)")
     print(f"# Mode : {'APPLY (mutations)' if args.apply else 'DRY-RUN'}")
     print()
 
     n_with_reason = sum(1 for r in targets if "blocked_reason" in r.frontmatter)
     n_with_attempts = sum(1 for r in targets
                           if r.frontmatter.get("acquisition_attempts"))
-    print(f"  - avec blocked_reason : {n_with_reason}")
-    print(f"  - avec acquisition_attempts non vide : {n_with_attempts}")
+    print(f"  - with blocked_reason: {n_with_reason}")
+    print(f"  - with non-empty acquisition_attempts: {n_with_attempts}")
     print()
 
     if not targets:
-        print("Rien à faire.")
+        print("Nothing to do.")
         return 0
 
     print(f"{'slug':<55} {'reason?':<8} {'attempts':>9}")
@@ -114,10 +114,10 @@ def main() -> int:
     print()
 
     if not args.apply:
-        print("Dry-run terminé. Relance avec --apply pour muter le registre.")
+        print("Dry-run finished. Re-run with --apply to mutate the registry.")
         return 0
 
-    print("Application des mutations…")
+    print("Applying mutations…")
     saved = 0
     failed = 0
     for ref in targets:
@@ -131,7 +131,7 @@ def main() -> int:
                   file=sys.stderr)
 
     print()
-    print(f"Récap : {saved} réinjectée(s), {failed} échec(s)")
+    print(f"Summary: {saved} reinjected, {failed} failure(s)")
     return 0 if failed == 0 else 1
 
 

@@ -147,14 +147,14 @@ def _ensure_git_backup(vault_root: Path, message: str) -> bool:
     git_dir = vault_root / ".git"
     if not git_dir.exists():
         if os.environ.get("RESEARCH_REQUIRE_GIT") == "1":
-            print(f"[ERR] {vault_root} n'est pas un repo git "
+            print(f"[ERR] {vault_root} is not a git repo "
                   f"(RESEARCH_REQUIRE_GIT=1).", flush=True)
-            print(f"      Pour initialiser : `pipeline ingest --init-git`",
+            print(f"      To initialise it: `pipeline ingest --init-git`",
                   flush=True)
             return False
-        print(f"[WARN] {vault_root} n'est pas un repo git — "
-              f"opération sans backup (rollback impossible). "
-              f"Pour activer le versionnement : `pipeline ingest --init-git`.",
+        print(f"[WARN] {vault_root} is not a git repo — "
+              f"proceeding without backup (no rollback possible). "
+              f"To enable versioning: `pipeline ingest --init-git`.",
               flush=True)
         return True
     # Commit les changements en cours avant la modification INGEST.
@@ -195,9 +195,9 @@ def _ensure_git_backup(vault_root: Path, message: str) -> bool:
             print("[ERR] git commit timeout", flush=True)
             return False
         except FileNotFoundError:
-            print("[ERR] git n'est pas installé sur ce système", flush=True)
+            print("[ERR] git is not installed on this system", flush=True)
             return False
-    print(f"[ERR] git backup : 5 tentatives échouées. Dernier : {last_err}",
+    print(f"[ERR] git backup: 5 attempts failed. Last: {last_err}",
           flush=True)
     return False
 
@@ -212,12 +212,12 @@ def init_git_vault(vault_root: Path) -> bool:
         return False
     git_dir = vault_root / ".git"
     if git_dir.exists():
-        print(f"[NOOP] git déjà initialisé dans {vault_root}", flush=True)
+        print(f"[NOOP] git already initialised in {vault_root}", flush=True)
         return True
     gitignore = vault_root / ".gitignore"
     if not gitignore.exists():
         gitignore.write_text(DEFAULT_GITIGNORE, encoding="utf-8")
-        print(f"[ok] .gitignore créé ({len(DEFAULT_GITIGNORE)} chars)",
+        print(f"[ok] .gitignore created ({len(DEFAULT_GITIGNORE)} chars)",
               flush=True)
     try:
         subprocess.run(["git", "-C", str(vault_root), "init"],
@@ -235,7 +235,7 @@ def init_git_vault(vault_root: Path) -> bool:
         print(f"[ERR] git init/commit failed : {e.stderr[:200] if e.stderr else e}",
               flush=True)
         return False
-    print(f"[ok] git initialisé dans {vault_root}", flush=True)
+    print(f"[ok] git initialised in {vault_root}", flush=True)
     return True
 
 
@@ -939,8 +939,8 @@ def _create_ref(
             # PDF trouvé mais page 1 ne valide pas — on garde candidate
             # avec un flag pour audit ultérieur.
             pdf_line = (
-                f"# PDF orphelin trouvé mais page 1 invalide ({reason}) — "
-                f"non associé\n"
+                f"# Orphan PDF found but page 1 invalid ({reason}) — "
+                f"not associated\n"
             )
 
     content = REF_TEMPLATE.format(
@@ -1280,6 +1280,6 @@ def ingest_citations_from_json(
     raw = citations_json_path.read_text(encoding="utf-8")
     data = json.loads(raw)
     if not isinstance(data, list):
-        raise ValueError(f"Le JSON doit être une liste, pas {type(data).__name__}")
+        raise ValueError(f"The JSON must be a list, not {type(data).__name__}")
     citations = [ParsedCitation(**c) for c in data]
     return ingest_citations(sota_path, citations, apply=apply)

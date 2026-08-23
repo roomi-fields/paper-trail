@@ -121,11 +121,11 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--apply", action="store_true",
-                   help="Applique les mutations (défaut : dry-run)")
+                   help="Apply the mutations (default: dry-run)")
     p.add_argument("--limit", type=int, default=0,
-                   help="Cap sur le nombre de refs candidates traitées")
+                   help="Cap on the number of candidate refs processed")
     p.add_argument("--verbose", "-v", action="store_true",
-                   help="Affiche les détails par ref")
+                   help="Print per-ref details")
     args = p.parse_args()
 
     candidates = [r for r in iter_refs() if r.state == "candidate"]
@@ -155,13 +155,13 @@ def main() -> int:
                 print(f"[FAIL] {ref.slug}: {type(e).__name__}: {e}",
                       file=sys.stderr)
 
-    print("Récap :")
+    print("Summary:")
     for v, n in counts.items():
         print(f"  {v:<25} {n:>4}")
     print()
 
     if failed_details:
-        print("Échantillon échecs :")
+        print("Failure sample:")
         for line in failed_details[:20]:
             print(line)
         if len(failed_details) > 20:
@@ -170,11 +170,11 @@ def main() -> int:
 
     if not args.apply:
         n_actionable = counts["validated"] + counts["scan_needs_ocr"]
-        print(f"Dry-run terminé. {n_actionable} ref(s) ré-associables "
+        print(f"Dry-run finished. {n_actionable} ref(s) re-associable "
               f"via --apply.")
     else:
         n_done = counts["validated"] + counts["scan_needs_ocr"]
-        print(f"Application terminée : {n_done} ref(s) ré-associées.")
+        print(f"Application finished: {n_done} ref(s) re-associated.")
 
     return 0
 

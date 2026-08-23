@@ -285,7 +285,7 @@ def main() -> int:
     if args.write_receipts:
         receipts_path = write_receipts(source_path, audits)
         print()
-        print(f"RECEIPTS.md écrit dans : {receipts_path}")
+        print(f"RECEIPTS.md written to: {receipts_path}")
 
     # Exit code : 0 if all VALID, 1 if any ADJUST/INVALID/UNVERIFIABLE
     n_problem = (verdicts.get("ADJUST", 0)

@@ -105,11 +105,11 @@ def download_public_pdf(identifier: str, out: Path, session_cookies: dict = None
     if not meta:
         return False
     if is_borrow_only(meta) and not session_cookies:
-        print(f"  [archive.org {identifier}] BORROW_ONLY — login + Borrow nécessaire")
+        print(f"  [archive.org {identifier}] BORROW_ONLY — login + Borrow required")
         return False
     pdf_name = find_pdf_file(meta)
     if not pdf_name:
-        print(f"  [archive.org {identifier}] pas de PDF dans cet item")
+        print(f"  [archive.org {identifier}] no PDF in this item")
         return False
     url = f"https://archive.org/download/{identifier}/{pdf_name}"
     try:

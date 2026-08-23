@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Téléchargeur de livres via Anna's Archive + libgen mirrors
+Book downloader via Anna's Archive + libgen mirrors
 Usage: python download_books.py [fichier_json] [dossier_sortie]
 
 Nommage: Auteur - Titre - LANGUE.ext
@@ -56,7 +56,7 @@ def convert_to_pdf(filepath):
 
     pdf_path = filepath.with_suffix(".pdf")
     if pdf_path.exists() and pdf_path.stat().st_size > 10_000:
-        log.info(f"  PDF déjà converti: {pdf_path.name}")
+        log.info(f"  PDF already converted: {pdf_path.name}")
         return str(pdf_path)
 
     log.info(f"  Conversion {filepath.suffix} → PDF...")
@@ -70,9 +70,9 @@ def convert_to_pdf(filepath):
             filepath.unlink()  # supprimer l'original
             return str(pdf_path)
         else:
-            log.warning(f"  Conversion échouée: {result.stderr[:100]}")
+            log.warning(f"  Conversion failed: {result.stderr[:100]}")
     except Exception as e:
-        log.warning(f"  Conversion échouée: {type(e).__name__}: {str(e)[:50]}")
+        log.warning(f"  Conversion failed: {type(e).__name__}: {str(e)[:50]}")
 
     return str(filepath)
 
@@ -180,23 +180,23 @@ def save_file(response, output_dir, author, title, lang):
                 total += len(chunk)
                 f.write(chunk)
     except Exception as e:
-        log.warning(f"  Download interrompu après {total / 1024 / 1024:.1f} MB: {type(e).__name__}")
+        log.warning(f"  Download interrupted after {total / 1024 / 1024:.1f} MB: {type(e).__name__}")
         out_path.unlink(missing_ok=True)
         raise
 
     if total < 10_000:
         out_path.unlink(missing_ok=True)
-        log.warning(f"  Fichier trop petit ({total} bytes), supprimé")
+        log.warning(f"  File too small ({total} bytes), deleted")
         return None
 
     # Vérifier les magic bytes et corriger l'extension si nécessaire
     real_ext = detect_real_ext(out_path)
     if real_ext == "html":
-        log.warning(f"  Fichier HTML déguisé en {ext}, supprimé")
+        log.warning(f"  HTML file disguised as {ext}, deleted")
         out_path.unlink(missing_ok=True)
         return None
     if real_ext == "rar" or real_ext == "gz":
-        log.warning(f"  Archive {real_ext} non supportée, supprimé")
+        log.warning(f"  {real_ext} archive not supported, deleted")
         out_path.unlink(missing_ok=True)
         return None
     if real_ext and real_ext != ext:
@@ -205,7 +205,7 @@ def save_file(response, output_dir, author, title, lang):
         out_path.rename(new_path)
         out_path = new_path
         filename = new_filename
-        log.info(f"  Extension corrigée: .{ext} → .{real_ext}")
+        log.info(f"  Extension corrected: .{ext} → .{real_ext}")
 
     log.info(f"  ✓ {filename} ({total / 1024 / 1024:.1f} MB)")
     return str(out_path)
@@ -223,7 +223,7 @@ def save_file_from_bytes(data, url, output_dir, author, title, lang):
     out_path = output_dir / filename
 
     if len(data) < 10_000:
-        log.warning(f"  Fichier trop petit ({len(data)} bytes), ignoré")
+        log.warning(f"  File too small ({len(data)} bytes), ignored")
         return None
 
     with open(out_path, "wb") as f:
@@ -246,7 +246,7 @@ def try_libgen_li(session, md5, output_dir, author, title, lang):
         if not dl_link:
             return None
         get_url = urljoin("https://libgen.li/", dl_link.get("href"))
-        log.info(f"  [libgen.li] Téléchargement...")
+        log.info(f"  [libgen.li] Downloading...")
         dl = session.get(get_url, timeout=TIMEOUT_DL, stream=True)
         if dl.status_code == 200:
             ct = dl.headers.get("Content-Type", "")
@@ -274,7 +274,7 @@ def try_library_lol(session, md5, output_dir, author, title, lang):
         if not dl_link:
             return None
         href = dl_link.get("href")
-        log.info(f"  [library.lol] Téléchargement...")
+        log.info(f"  [library.lol] Downloading...")
         dl = session.get(href, timeout=TIMEOUT_DL, stream=True, verify=False)
         if dl.status_code == 200:
             ct = dl.headers.get("Content-Type", "")
@@ -325,7 +325,7 @@ def try_annas_slow(playwright_browser, md5, output_dir, author, title, lang):
             body_check = page.inner_text("body")
             if "patienter" not in body_check.lower() and "wait" not in body_check.lower() and "seconde" not in body_check.lower():
                 # Pas de décompte visible → mauvaise page
-                log.info(f"  [anna slow #{server_idx+1}] Pas de page de décompte, skip")
+                log.info(f"  [anna slow #{server_idx+1}] No countdown page, skipping")
                 page.close()
                 context.close()
                 time.sleep(3)
@@ -345,14 +345,14 @@ def try_annas_slow(playwright_browser, md5, output_dir, author, title, lang):
                 if download_link:
                     break
                 if wait == 0:
-                    log.info(f"  [anna slow #{server_idx+1}] Attente du décompte...")
+                    log.info(f"  [anna slow #{server_idx+1}] Waiting for the countdown...")
                 if wait % 12 == 11:  # log toutes les ~60s
                     log.info(f"  [anna slow #{server_idx+1}] Toujours en attente ({(wait+1)*5}s)...")
                 time.sleep(5)
 
             if download_link:
                 dl_url = download_link.get_attribute("href")
-                log.info(f"  [anna slow #{server_idx+1}] Lien trouvé: {dl_url[:60]}...")
+                log.info(f"  [anna slow #{server_idx+1}] Link found: {dl_url[:60]}...")
 
                 # Télécharger avec requests (plus fiable pour gros fichiers)
                 page.close()
@@ -368,9 +368,9 @@ def try_annas_slow(playwright_browser, md5, output_dir, author, title, lang):
                         return save_file(dl, output_dir, author, title, lang)
                     elif int(dl.headers.get("Content-Length", "0")) > 50_000:
                         return save_file(dl, output_dir, author, title, lang)
-                log.warning(f"  [anna slow #{server_idx+1}] Download échoué: HTTP {dl.status_code}")
+                log.warning(f"  [anna slow #{server_idx+1}] Download failed: HTTP {dl.status_code}")
             else:
-                log.info(f"  [anna slow #{server_idx+1}] Pas de lien trouvé")
+                log.info(f"  [anna slow #{server_idx+1}] No link found")
                 page.close()
                 context.close()
 
@@ -489,10 +489,10 @@ def search_annas_multi(pw_browser, query, label=""):
         results.sort(key=lambda x: x["score"])
         if results:
             best = results[0]
-            log.info(f"  {label}: {len(results)} résultats, meilleur: "
+            log.info(f"  {label}: {len(results)} results, best: "
                      f"[{best['lang']}] {best['fmt']} {best['size_mb']:.1f}MB (md5: {best['md5'][:12]}...)")
         else:
-            log.info(f"  {label}: pas de résultat")
+            log.info(f"  {label}: no result")
         return results
 
     except Exception as e:
@@ -578,7 +578,7 @@ def process_book(session, pw_browser, book, output_dir):
             for f in nouveaux_dir.iterdir():
                 prefix = re.sub(r'[<>:"/\\|?*]', '_', f"{author.split(',')[0].strip()} - {title[:60]}").lower()
                 if f.is_file() and f.name.lower().startswith(prefix) and f.stat().st_size > 10_000:
-                    log.info(f"\n  ⏭ {author} - {title[:40]}... DÉJÀ DANS nouveaux/")
+                    log.info(f"\n  ⏭ {author} - {title[:40]}... ALREADY IN nouveaux/")
                     return {"status": "ok", "file": str(f), "isbn": "cached", "md5": "cached"}
         # Supprimer l'ancien fichier invalide du dossier principal uniquement
         for f in output_dir.iterdir():
@@ -589,13 +589,13 @@ def process_book(session, pw_browser, book, output_dir):
                 break
     elif nblm == "ok":
         # Phase 1 a déjà archivé ces fichiers au démarrage → skip
-        log.info(f"\n  ⏭ {author} - {title[:40]}... OK (archivé)")
+        log.info(f"\n  ⏭ {author} - {title[:40]}... OK (archived)")
         return {"status": "ok", "file": "archived", "isbn": "cached", "md5": "cached"}
     else:
         # Skip si déjà téléchargé
         existing = is_already_downloaded(output_dir, author, title)
         if existing:
-            log.info(f"\n  ⏭ {author} - {title[:40]}... DÉJÀ PRÉSENT: {existing}")
+            log.info(f"\n  ⏭ {author} - {title[:40]}... ALREADY PRESENT: {existing}")
             return {"status": "ok", "file": existing, "isbn": "cached", "md5": "cached"}
 
     log.info(f"\n{'='*60}")
@@ -607,7 +607,7 @@ def process_book(session, pw_browser, book, output_dir):
     # Recherche par titre (prioritaire — les ISBN de la biblio ne sont pas fiables)
     candidates = search_by_title(pw_browser, author, title)
     if not candidates:
-        log.warning(f"  ✗ Aucun résultat trouvé")
+        log.warning(f"  ✗ No result found")
         return {"status": "fail", "title": title}
 
     # Essayer chaque candidat dans l'ordre de score (meilleur en premier)
@@ -622,7 +622,7 @@ def process_book(session, pw_browser, book, output_dir):
 
         time.sleep(2)
 
-    log.warning(f"  ✗ {len(candidates)} candidats essayés, aucun n'a fonctionné")
+    log.warning(f"  ✗ {len(candidates)} candidates tried, none worked")
     return {"status": "fail", "title": title}
 
 
@@ -661,7 +661,7 @@ def fetch_book_metadata(pw_browser, md5):
         context.close()
         return info.get("author", ""), info.get("title", "")
     except Exception as e:
-        log.warning(f"  Métadonnées: {type(e).__name__}: {str(e)[:40]}")
+        log.warning(f"  Metadata: {type(e).__name__}: {str(e)[:40]}")
         try:
             page.close()
             context.close()
@@ -689,8 +689,8 @@ def find_underscored_books(books, output_dir):
 def interactive_pass(session, pw_browser, failed_books, output_dir):
     """Passe interactive: collecte tous les liens d'abord, puis télécharge."""
     log.info(f"\n{'='*60}")
-    log.info(f"=== {len(failed_books)} livres à traiter — Saisie des URLs ===")
-    log.info(f"Collez une URL Anna's Archive (/md5/...) ou Entrée pour passer.\n")
+    log.info(f"=== {len(failed_books)} books to process — URL entry ===")
+    log.info(f"Paste an Anna's Archive URL (/md5/...) or press Enter to skip.\n")
 
     # Phase 1 : collecter toutes les URLs
     todo = []  # [(book, md5), ...]
@@ -708,22 +708,22 @@ def interactive_pass(session, pw_browser, failed_books, output_dir):
             continue
         md5_match = re.search(r'/md5/([a-fA-F0-9]+)', url)
         if not md5_match:
-            print(f"  ⚠ URL invalide, ignoré")
+            print(f"  ⚠ invalid URL, skipped")
             skipped.append(b)
             continue
         todo.append((b, md5_match.group(1)))
-        print(f"  ✓ md5 enregistré")
+        print(f"  ✓ md5 recorded")
 
     if not todo:
         return [], skipped
 
     # Phase 2 : télécharger tout d'un coup
     log.info(f"\n{'='*60}")
-    log.info(f"=== Téléchargement de {len(todo)} livres ===")
+    log.info(f"=== Downloading {len(todo)} books ===")
     ok, still_failed = [], []
     for b, md5 in todo:
         log.info(f"\n  [{b['author']}] {b['title'][:50]}")
-        log.info(f"  md5: {md5[:12]}... → téléchargement...")
+        log.info(f"  md5: {md5[:12]}... → downloading...")
         lang = detect_lang("", b["title"])
         dl_dir = output_dir / "nouveaux"
         dl_dir.mkdir(exist_ok=True)
@@ -732,7 +732,7 @@ def interactive_pass(session, pw_browser, failed_books, output_dir):
             ok.append({**b, "status": "ok", "file": result, "md5": md5})
             log.info(f"  ✓ OK")
         else:
-            log.warning(f"  ✗ Échec")
+            log.warning(f"  ✗ Failed")
             still_failed.append(b)
         time.sleep(2)
     still_failed.extend(skipped)
@@ -741,13 +741,13 @@ def interactive_pass(session, pw_browser, failed_books, output_dir):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Téléchargeur de livres")
+    parser = argparse.ArgumentParser(description="Book downloader")
     parser.add_argument("input_file", nargs="?", default="downloads/musicologie_books.json")
     parser.add_argument("output_dir", nargs="?", default="downloads/musicologie")
     parser.add_argument("-i", "--interactive", action="store_true",
-                        help="Passe interactive sur les échecs après le téléchargement")
+                        help="Interactive pass over the failures after downloading")
     parser.add_argument("--retry", action="store_true",
-                        help="Mode retry: relance uniquement la passe interactive sur les échecs du rapport.json")
+                        help="Retry mode: re-run the interactive pass only over the failures du rapport.json")
     parser.add_argument("--add", action="store_true",
                         help="Mode ajout: saisir de nouveaux ouvrages (URL + auteur + titre)")
     args = parser.parse_args()
@@ -759,7 +759,7 @@ def main():
     with open(input_file, encoding="utf-8") as f:
         books = json.load(f)
 
-    log.info(f"=== {len(books)} livres à traiter ===")
+    log.info(f"=== {len(books)} books to process ===")
     log.info(f"Sortie: {output_dir.resolve()}")
 
     # Phase 1 : archiver les livres déjà validés dans NotebookLM
@@ -787,7 +787,7 @@ def main():
             if found:
                 break
     if archived:
-        log.info(f"📦 {archived} livres archivés dans {archive_dir}")
+        log.info(f"📦 {archived} books archived in {archive_dir}")
 
     session = create_session()
 
@@ -801,9 +801,9 @@ def main():
             headless=True,
             args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
         )
-        log.info("Playwright: navigateur lancé")
+        log.info("Playwright: browser launched")
     except Exception as e:
-        log.warning(f"Playwright indisponible ({e}), sources lentes désactivées")
+        log.warning(f"Playwright unavailable ({e}), slow sources disabled")
 
     report_path = output_dir / "rapport.json"
 
@@ -811,7 +811,7 @@ def main():
         # Mode --add : saisie d'URLs uniquement, métadonnées auto
         if args.add:
             print(f"\n=== Ajout de nouveaux ouvrages ===")
-            print(f"Collez les URLs Anna's Archive (/md5/...).")
+            print(f"Paste the Anna's Archive URLs (/md5/...).")
             print(f"URL vide = terminer.\n")
             md5_list = []
             while True:
@@ -824,17 +824,17 @@ def main():
                     break
                 md5_match = re.search(r'/md5/([a-fA-F0-9]+)', url)
                 if not md5_match:
-                    print(f"  ⚠ URL invalide (pas de /md5/...), ignoré")
+                    print(f"  ⚠ invalid URL (no /md5/...), skipped")
                     continue
                 md5_list.append(md5_match.group(1))
-                print(f"  ✓ md5 enregistré ({len(md5_list)})")
+                print(f"  ✓ md5 recorded ({len(md5_list)})")
 
             if not md5_list:
-                log.info("Rien à télécharger.")
+                log.info("Nothing to download.")
                 return
 
             log.info(f"\n{'='*60}")
-            log.info(f"=== Récupération métadonnées + téléchargement ({len(md5_list)} ouvrages) ===")
+            log.info(f"=== Fetching metadata + downloading ({len(md5_list)} works) ===")
             new_books = []
             dl_dir = output_dir / "nouveaux"
             dl_dir.mkdir(exist_ok=True)
@@ -852,7 +852,7 @@ def main():
                     log.info(f"  ✓ OK")
                     new_books.append({"author": author, "title": title})
                 else:
-                    log.warning(f"  ✗ Échec")
+                    log.warning(f"  ✗ Failed")
                 time.sleep(2)
 
             # Ajouter les nouveaux livres au JSON
@@ -860,7 +860,7 @@ def main():
                 books.extend(new_books)
                 with open(input_file, "w", encoding="utf-8") as f:
                     json.dump(books, f, ensure_ascii=False, indent=2)
-                log.info(f"\n📝 {len(new_books)} ouvrages ajoutés à {input_file}")
+                log.info(f"\n📝 {len(new_books)} works added to {input_file}")
             return
 
         # Mode --retry : échecs du rapport + fichiers _préfixés dans nouveaux/
@@ -880,9 +880,9 @@ def main():
                 if (b["author"], b["title"]) not in seen:
                     failed_books.append(b)
             if underscored:
-                log.info(f"📌 {len(underscored)} livres rejetés (_préfixés dans nouveaux/)")
+                log.info(f"📌 {len(underscored)} books rejected (_prefixed in nouveaux/)")
             if not failed_books:
-                log.info("Rien à retry.")
+                log.info("Nothing to retry.")
                 return
             ok, still_failed = interactive_pass(session, pw_browser, failed_books, output_dir)
             prev["ok"].extend(ok)
@@ -890,7 +890,7 @@ def main():
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(prev, f, ensure_ascii=False, indent=2)
             log.info(f"\n{'='*60}")
-            log.info(f"=== Retry: {len(ok)} récupérés, {len(still_failed)} restants ===")
+            log.info(f"=== Retry: {len(ok)} recovered, {len(still_failed)} remaining ===")
             return
 
         # Mode normal
@@ -916,9 +916,9 @@ def main():
 
     # Rapport
     log.info(f"\n{'='*60}")
-    log.info(f"=== RÉSULTAT: {len(results['ok'])}/{len(books)} téléchargés ===")
+    log.info(f"=== RESULT: {len(results['ok'])}/{len(books)} downloaded ===")
     if results["fail"]:
-        log.info(f"\n--- ÉCHECS ({len(results['fail'])}) ---")
+        log.info(f"\n--- FAILURES ({len(results['fail'])}) ---")
         for b in results["fail"]:
             log.info(f"  ✗ {b['author']} - {b['title']}")
 

@@ -114,28 +114,28 @@ def main() -> int:
         missing_refs = []
         retracted_cites = []
         print(
-            f"[paper-trail WARN] registre inaccessible — I22/I23 skippés.\n"
-            f"  Détail : {registry_load_error}\n"
-            f"  Astuce : définir RESEARCH_VAULT_PATH dans "
-            f"~/.config/paper-trail/env si ce n'est pas déjà fait.",
+            f"[paper-trail WARN] registry unreachable — I22/I23 skipped.\n"
+            f"  Detail: {registry_load_error}\n"
+            f"  Hint: set RESEARCH_VAULT_PATH in "
+            f"~/.config/paper-trail/env if you have not already.",
             file=sys.stderr,
         )
 
     errors = []
     if free_text_lines:
         errors.append(
-            f"I21 : {len(free_text_lines)} citation(s) en texte libre sans "
-            f"wikilink. Exemples : {free_text_lines[:2]}"
+            f"I21: {len(free_text_lines)} free-text citation(s) with no "
+            f"wikilink. Examples: {free_text_lines[:2]}"
         )
     if missing_refs:
         errors.append(
-            f"I22 : wikilinks vers refs absentes du registre : "
+            f"I22: wikilinks to refs missing from the registry: "
             f"{missing_refs[:3]}"
         )
     if retracted_cites:
         # I23 = WARN, pas bloquant. Juste avertir.
         print(
-            f"[paper-trail WARN] {p.name} cite refs retracted : "
+            f"[paper-trail WARN] {p.name} cites retracted refs: "
             f"{retracted_cites[:3]}",
             file=sys.stderr,
         )
@@ -145,8 +145,8 @@ def main() -> int:
         for e in errors:
             print(f"  - {e}", file=sys.stderr)
         print(
-            f"\nLancer `/paper-trail:ingest {p.name}` pour résoudre, ou "
-            f"`PAPER_TRAIL_SKIP_PRE_SAVE=1` pour bypass exceptionnel.",
+            f"\nRun `/paper-trail:ingest {p.name}` to resolve, or "
+            f"`PAPER_TRAIL_SKIP_PRE_SAVE=1` for an exceptional bypass.",
             file=sys.stderr,
         )
         return 2

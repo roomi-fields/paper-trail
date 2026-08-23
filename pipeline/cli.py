@@ -30,7 +30,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
     print(f"# Registry status — {total} refs")
     print()
-    print(f"{'État':<40} {'Count':>6}  {'Catégorie':<20}")
+    print(f"{'State':<40} {'Count':>6}  {'Category':<20}")
     print("-" * 70)
 
     def cat(state: str) -> str:
@@ -51,7 +51,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     waiting = sum(counter[s] for s in counter if cat(s) == "waiting")
     blocked = sum(counter[s] for s in counter if cat(s) == "blocked_human")
     terminal = sum(counter[s] for s in counter if cat(s) == "terminal")
-    print(f"Récap : active={active}  waiting={waiting}  blocked_human={blocked}  terminal={terminal}")
+    print(f"Summary: active={active}  waiting={waiting}  blocked_human={blocked}  terminal={terminal}")
     return 0
 
 
@@ -59,7 +59,7 @@ def cmd_lint(args: argparse.Namespace) -> int:
     """Lance le linter (lint_registry.py existant) et affiche le rapport."""
     rc, out = run_lint(verbose=True)
     if rc != 0:
-        print(f"\n[lint] returncode={rc} — invariants violés", file=sys.stderr)
+        print(f"\n[lint] returncode={rc} — invariants violated", file=sys.stderr)
     return rc
 
 
@@ -98,9 +98,9 @@ def _clear_exhaustion_locks(verbose: bool = False) -> int:
             save_ref(ref)
             n += 1
             if verbose:
-                print(f"[unblock] {ref.slug} : verrou cascade levé pour nouvelle tentative")
+                print(f"[unblock] {ref.slug}: cascade lock lifted for a new attempt")
     if n:
-        print(f"[retry-exhausted] {n} ref(s) déverrouillée(s) pour cette passe")
+        print(f"[retry-exhausted] {n} ref(s) unlocked for this pass")
     return n
 
 
@@ -112,9 +112,9 @@ def _run_one_pass(args: argparse.Namespace) -> dict:
     """
     missing = _preflight_dependencies()
     if missing:
-        print(f"[FATAL] dépendances manquantes : {', '.join(missing)} — "
-              f"`pip install {' '.join(missing)}` (ou lancer depuis le venv du plugin). "
-              f"Sans elles chaque ref planterait et serait comptée `blocked`.",
+        print(f"[FATAL] missing dependencies: {', '.join(missing)} — "
+              f"`pip install {' '.join(missing)}` (or run from the plugin venv). "
+              f"Without them every ref would crash and be counted `blocked`.",
               file=sys.stderr)
         return {"planned": 0, "done": 0, "pending": 0, "blocked": 0,
                 "skipped_terminal": 0, "fatal": True}
@@ -230,7 +230,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         if stats.get("fatal"):
             return 1
         print()
-        print(f"Récap session : planned={stats['planned']}  done={stats['done']}  "
+        print(f"Session summary: planned={stats['planned']}  done={stats['done']}  "
               f"pending={stats['pending']}  blocked={stats['blocked']}  "
               f"skipped_terminal={stats['skipped_terminal']}")
         # Indice : une fiche enchaîne plusieurs transitions (uid_resolved →
@@ -239,8 +239,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         # explicitement `--loop`.
         if stats["done"] > 0:
             print(
-                "  → relance avec `pipeline run --loop` pour auto-chaîner "
-                "les transitions suivantes jusqu'à épuisement."
+                "  → re-run with `pipeline run --loop` to auto-chain the "
+                "following transitions until exhaustion."
             )
     else:
         total = {"planned": 0, "done": 0, "pending": 0, "blocked": 0,
@@ -257,15 +257,15 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"  → iteration {iteration} : done={stats['done']}  "
                   f"blocked={stats['blocked']}  pending={stats['pending']}")
             if stats["done"] == 0:
-                print(f"\n# Loop terminé : 0 transition à l'itération {iteration} "
-                      f"→ épuisement atteint.")
+                print(f"\n# Loop finished: 0 transitions at iteration {iteration} "
+                      f"→ exhaustion reached.")
                 break
         else:
-            print(f"\n# Loop arrêté : max_iterations={max_iter} atteint avec "
-                  f"des transitions encore en cours. Relance `pipeline run --loop` "
-                  f"pour continuer.")
+            print(f"\n# Loop stopped: max_iterations={max_iter} reached with "
+                  f"transitions still in progress. Re-run `pipeline run --loop` "
+                  f"to continue.")
         print()
-        print(f"Récap CUMULÉ ({iteration} itération(s)) : "
+        print(f"CUMULATIVE summary ({iteration} iteration(s)): "
               f"planned={total['planned']}  done={total['done']}  "
               f"pending={total['pending']}  blocked={total['blocked']}  "
               f"skipped_terminal={total['skipped_terminal']}")
@@ -278,7 +278,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         print("# Lint final")
         rc_lint, _out = run_lint(verbose=True)
         if rc_lint != 0:
-            print(f"[lint] returncode={rc_lint} — invariants R1-R10 violés",
+            print(f"[lint] returncode={rc_lint} — invariants R1-R10 violated",
                   file=sys.stderr)
 
     # Doctor en fin de session (Couche 1) : invariants I1-I15. Jamais --fix auto.
@@ -291,7 +291,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
         print(out_doctor)
         if rc_doctor != 0:
-            print(f"[doctor] returncode={rc_doctor} — invariants I1-I15 violés",
+            print(f"[doctor] returncode={rc_doctor} — invariants I1-I15 violated",
                   file=sys.stderr)
 
     return max(rc_lint, rc_doctor)
@@ -325,7 +325,7 @@ def cmd_arbitrate(args: argparse.Namespace) -> int:
         return 2
 
     if ref.state in ("retracted", "sota_cited_confirmed"):
-        print(f"[NOOP] {slug} déjà terminal ({ref.state})", file=sys.stderr)
+        print(f"[NOOP] {slug} already terminal ({ref.state})", file=sys.stderr)
         return 1
 
     decision = args.decision
@@ -388,7 +388,7 @@ def cmd_arbitrate(args: argparse.Namespace) -> int:
                     shutil.move(str(src), str(qpath))
                     quarantined = True
                 except OSError as e:
-                    print(f"[WARN] quarantine échouée : {e}", file=sys.stderr)
+                    print(f"[WARN] quarantine failed: {e}", file=sys.stderr)
         # Reset des champs PDF + state
         ref.frontmatter.pop("pdf_path", None)
         ref.frontmatter.pop("pdf_sha256", None)
@@ -401,7 +401,7 @@ def cmd_arbitrate(args: argparse.Namespace) -> int:
                                    "quarantined": quarantined,
                                    "rejected_sha_added": bool(current_sha)})
     else:
-        print(f"[ERR] décision inconnue : {decision}", file=sys.stderr)
+        print(f"[ERR] unknown decision: {decision}", file=sys.stderr)
         return 2
 
     save_ref(ref)
@@ -421,12 +421,12 @@ def cmd_arbitrate(args: argparse.Namespace) -> int:
             )
             if sync.total_substitutions > 0:
                 print(f"       sync: {sync.total_substitutions} wikilink(s) "
-                      f"retiré(s) dans {len(sync.sotas_touched)} SOTA(s)")
+                      f"removed in {len(sync.sotas_touched)} SOTA(s)")
             if sync.errors:
                 for e in sync.errors[:3]:
                     print(f"       sync error: {e}", file=sys.stderr)
         except Exception as e:
-            print(f"[WARN] sota_sync échoué : {e}", file=sys.stderr)
+            print(f"[WARN] sota_sync failed: {e}", file=sys.stderr)
     return 0
 
 
@@ -594,7 +594,7 @@ def cmd_resolve_textbooks(args: argparse.Namespace) -> int:
         return 2
     decisions = json.loads(json_path.read_text(encoding="utf-8"))
     if not isinstance(decisions, list):
-        print("[ERR] decisions.json doit être une liste", file=sys.stderr)
+        print("[ERR] decisions.json must be a list", file=sys.stderr)
         return 2
 
     n_merged = n_completed = n_blocked = n_err = 0
@@ -613,7 +613,7 @@ def cmd_resolve_textbooks(args: argparse.Namespace) -> int:
         if action == "merge_into":
             target = d.get("target_slug")
             if not target or not (REFS / f"{target}.md").exists():
-                print(f"[ERR] target {target} introuvable pour {slug}",
+                print(f"[ERR] target {target} not found for {slug}",
                       file=sys.stderr)
                 n_err += 1
                 continue
@@ -647,13 +647,13 @@ def cmd_resolve_textbooks(args: argparse.Namespace) -> int:
                 )
                 if sync.total_substitutions > 0:
                     print(f"        sync: {sync.total_substitutions} "
-                          f"wikilink(s) → {target} dans "
+                          f"wikilink(s) → {target} in "
                           f"{len(sync.sotas_touched)} SOTA(s)")
                 if sync.errors:
                     for e in sync.errors[:3]:
                         print(f"        sync error: {e}", file=sys.stderr)
             except Exception as e:
-                print(f"[WARN] sota_sync échoué : {e}", file=sys.stderr)
+                print(f"[WARN] sota_sync failed: {e}", file=sys.stderr)
         elif action == "complete":
             year = d.get("year")
             title = d.get("title")
@@ -691,7 +691,7 @@ def cmd_resolve_textbooks(args: argparse.Namespace) -> int:
             n_blocked += 1
             print(f"[blocked] {slug}  reason={reason}")
         else:
-            print(f"[ERR] action inconnue : {action!r} pour {slug}",
+            print(f"[ERR] unknown action: {action!r} for {slug}",
                   file=sys.stderr)
             n_err += 1
 
@@ -732,9 +732,9 @@ def cmd_search(args: argparse.Namespace) -> int:
     limit = getattr(args, "limit", 0) or 50
     matches = matches[:limit]
     if not matches:
-        print(f"Aucune ref ne matche {query!r} parmi les refs validées.")
+        print(f"No ref matches {query!r} among the validated refs.")
         return 0
-    print(f"{len(matches)} refs validées match {query!r} :\n")
+    print(f"{len(matches)} validated refs match {query!r}:\n")
     for ref in matches:
         fm = ref.frontmatter
         author = (fm.get("author") or "?")[:25]
@@ -806,8 +806,8 @@ def cmd_ingest(args: argparse.Namespace) -> int:
             if not ingest_mod._ensure_git_backup(
                 VAULT, f"paper-trail ingest before modifying {sota.name}"
             ):
-                print("[ERR] backup git impossible. Use --init-git d'abord "
-                      "ou skip --apply pour dry-run.", file=sys.stderr)
+                print("[ERR] git backup impossible. Use --init-git first, "
+                      "or drop --apply for a dry-run.", file=sys.stderr)
                 return 2
         result = ingest_mod.ingest_citations_from_json(
             sota, json_path, apply=apply
@@ -845,7 +845,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     if getattr(args, "all_sotas", False):
         adapter = get_adapter()
         sotas = list(adapter.find_sotas())
-        print(f"Scan de {len(sotas)} SOTAs pour sections bibliographiques...")
+        print(f"Scanning {len(sotas)} SOTAs for bibliographic sections...")
         total_sections = 0
         sotas_with_sections = 0
         for sota in sotas:
@@ -855,15 +855,15 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                 sotas_with_sections += 1
                 total_sections += len(non_excl)
                 print(f"  {sota.stem:<60} {len(non_excl)} section(s)")
-        print(f"\n→ {sotas_with_sections}/{len(sotas)} SOTAs avec sections "
-              f"candidates ({total_sections} sections au total)")
-        print("\nProchaine étape : orchestrer le sub-agent citation-parser "
-              "via /paper-trail:ingest-all (slash command) qui invoquera "
-              "le sub-agent pour parser chaque section, puis appellera "
-              "cette CLI avec le JSON résultat.")
+        print(f"\n→ {sotas_with_sections}/{len(sotas)} SOTAs with candidate "
+              f"sections ({total_sections} sections in total)")
+        print("\nNext step: orchestrate the citation-parser sub-agent via "
+              "/paper-trail:ingest-all (slash command), which invokes the "
+              "sub-agent to parse each section, then calls this CLI with the "
+              "resulting JSON.")
         return 0
 
-    print("[ERR] Mode inconnu. Voir `pipeline ingest --help`.", file=sys.stderr)
+    print("[ERR] Unknown mode. See `pipeline ingest --help`.", file=sys.stderr)
     return 2
 
 
@@ -915,7 +915,7 @@ def cmd_acquire(args: argparse.Namespace) -> int:
     print(f"  Mode: {'APPLY' if apply else 'DRY-RUN'}")
     print(f"  Target slugs   : {len(target_slugs)}")
     print(f"  Succeeded      : {len(batch.succeeded)} (page1_validated)")
-    print(f"  Pending        : {len(batch.pending)} (cascade à finir)")
+    print(f"  Pending        : {len(batch.pending)} (cascade to finish)")
     print(f"  Blocked        : {len(batch.blocked)}")
     print(f"  Skipped (term) : {len(batch.skipped_terminal)}")
     if batch.errors:
@@ -1096,7 +1096,7 @@ def cmd_purge(args: argparse.Namespace) -> int:
         for reason, count in sorted(by_reason.items()):
             print(f"    {reason:35s} : {count}")
     if result.actions:
-        print(f"\n  Détails (max 15) :")
+        print(f"\n  Details (max 15):")
         for a in result.actions[:15]:
             note = (f"→ {a.sibling_slug}" if a.sibling_slug
                     else "→ strip" if a.replacement is None
@@ -1106,7 +1106,7 @@ def cmd_purge(args: argparse.Namespace) -> int:
     if apply:
         print(f"\n  Applied: {result.n_applied}")
     else:
-        print(f"\n  Dry-run. Utilise --apply pour exécuter.")
+        print(f"\n  Dry-run. Use --apply to execute.")
     if result.errors:
         print(f"\n  Errors: {len(result.errors)}")
         for e in result.errors[:3]:
@@ -1129,7 +1129,7 @@ def cmd_retract_uncited(args: argparse.Namespace) -> int:
     from datetime import datetime, timezone
 
     active_states = {"candidate", "uid_resolved", "awaiting_rtfm_ocr"}
-    print("Scan du vault pour citations...", file=sys.stderr)
+    print("Scanning the vault for citations...", file=sys.stderr)
     citations_idx = build_citations_index()
 
     candidates = []
@@ -1142,7 +1142,7 @@ def cmd_retract_uncited(args: argparse.Namespace) -> int:
             continue
         candidates.append(ref)
 
-    print(f"\n{len(candidates)} refs actives non citées hors INDEX")
+    print(f"\n{len(candidates)} active refs uncited outside INDEX")
     for ref in candidates:
         author = ref.frontmatter.get("author") or "?"
         year = ref.frontmatter.get("year") or "?"
@@ -1152,7 +1152,7 @@ def cmd_retract_uncited(args: argparse.Namespace) -> int:
         return 0
 
     if not getattr(args, "apply", False):
-        print(f"\nDry-run (utilise --apply pour retract ces {len(candidates)} refs)")
+        print(f"\nDry-run (use --apply to retract these {len(candidates)} refs)")
         return 0
 
     reason = (getattr(args, "reason", None) or
@@ -1193,7 +1193,7 @@ def cmd_retract_uncited(args: argparse.Namespace) -> int:
             n_err += 1
     print(f"\nRetracted: {n_ok}/{len(candidates)} (errors: {n_err})")
     if n_sota_sub > 0:
-        print(f"Sync: {n_sota_sub} wikilink(s) retiré(s) dans "
+        print(f"Sync: {n_sota_sub} wikilink(s) removed in "
               f"{len(n_sota_files)} SOTA(s)")
     return 1 if n_err else 0
 
@@ -1263,7 +1263,7 @@ def cmd_reactivate_ocr(args: argparse.Namespace) -> int:
                 print(f"[wait] {ref.slug:<55} {via}")
 
     print()
-    print(f"# reactivate-ocr — {total} refs en awaiting_rtfm_ocr scannées")
+    print(f"# reactivate-ocr — {total} refs in awaiting_rtfm_ocr scanned")
     for k in ("converted", "still_pending", "missing_in_index", "anomaly",
               "ocr_failed", "needs_reacq_post_ocr", "error"):
         print(f"  {k:<25} {counts[k]:>4}")
@@ -1293,7 +1293,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     )
     print(out)
     if rc != 0:
-        print(f"\n[doctor] returncode={rc} — au moins 1 ERROR détecté",
+        print(f"\n[doctor] returncode={rc} — at least 1 ERROR detected",
               file=sys.stderr)
     return rc
 
@@ -1335,186 +1335,185 @@ def cmd_events(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m pipeline",
-        description="Worker FSM stricte pour pipeline SOTA — voir plans/B_worker_FSM_pipeline.md",
+        description="Strict worker FSM for the SOTA pipeline — see plans/B_worker_FSM_pipeline.md",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    pst = sub.add_parser("status", help="Compte les refs par état")
+    pst = sub.add_parser("status", help="Count refs by state")
     pst.set_defaults(func=cmd_status)
 
-    pln = sub.add_parser("lint", help="Lance lint_registry.py (invariants R1-R10)")
+    pln = sub.add_parser("lint", help="Run lint_registry.py (invariants R1-R10)")
     pln.set_defaults(func=cmd_lint)
 
-    prn = sub.add_parser("run", help="Pousse les refs actives vers leur prochain état")
-    prn.add_argument("--state", help="Filtre : ne traite qu'un état particulier")
-    prn.add_argument("--ref", help="Filtre : ne traite qu'une ref (par slug)")
+    prn = sub.add_parser("run", help="Push active refs to their next state")
+    prn.add_argument("--state", help="Filter: process one state only")
+    prn.add_argument("--ref", help="Filter: process one ref only (by slug)")
     prn.add_argument("--cited-in", action="append", default=[],
-                     help="Filtre OR : refs citées par ce SOTA/Paper (répétable)")
+                     help="OR filter: refs cited by this SOTA/paper (repeatable)")
     prn.add_argument("--limit", type=int, default=0,
-                     help="Max refs traitées (0 = pas de limite)")
+                     help="Max refs processed (0 = no limit)")
     prn.add_argument("--dry-run", action="store_true",
-                     help="Affiche les plans sans muter")
+                     help="Print the plans without mutating")
     prn.add_argument("--no-lint", action="store_true",
-                     help="Skip le lint final")
+                     help="Skip the final lint")
     prn.add_argument("--no-doctor", action="store_true",
-                     help="Skip les invariants doctor I1-I15 en fin de run")
+                     help="Skip the doctor invariants I1-I15 at end of run")
     prn.add_argument("--retry-exhausted", action="store_true",
-                     help="Lève les verrous `cascade_exhausted_needs_manual` "
-                          "avant la passe (reprise automatique ; les verrous "
-                          "posés par un humain ne sont pas touchés)")
+                     help="Lift `cascade_exhausted_needs_manual` locks before "
+                          "the pass (automatic resumption; locks placed by a "
+                          "human are left untouched)")
     prn.add_argument("-v", "--verbose", action="store_true")
     prn.add_argument("--loop", action="store_true",
-                     help="Boucle jusqu'à épuisement : re-run tant que des "
-                          "transitions sont possibles (max --max-iterations).")
+                     help="Loop until exhaustion: re-run while transitions "
+                          "remain possible (max --max-iterations).")
     prn.add_argument("--max-iterations", type=int, default=10,
-                     help="Plafond d'itérations en mode --loop (défaut 10).")
+                     help="Iteration cap in --loop mode (default 10).")
     prn.set_defaults(func=cmd_run)
 
     pra = sub.add_parser("reactivate-ocr",
-                         help="Re-évalue les awaiting_rtfm_ocr via rtfm check")
+                         help="Re-evaluate awaiting_rtfm_ocr refs via rtfm check")
     pra.add_argument("--quiet", action="store_true")
     pra.set_defaults(func=cmd_reactivate_ocr)
 
     prt = sub.add_parser("resolve-textbooks",
-                         help="Résout les refs textbook ingérées sans year/title")
+                         help="Resolve textbook refs ingested without year/title")
     prc = sub.add_parser("registry-cleanup",
-                         help="Nettoyage historique du registre (incluant "
-                              "duplicates avec suffixes numériques _2_3_4)")
+                         help="Historical registry cleanup (including duplicates "
+                              "with numeric suffixes _2_3_4)")
     prc.add_argument("--list", dest="list_candidates", action="store_true",
-                     help="Liste les candidates au nettoyage (JSON)")
+                     help="List cleanup candidates (JSON)")
     prc.add_argument("--apply-from", dest="apply_from",
-                     help="JSON de décisions à appliquer "
-                          "(format identique à resolve-textbooks)")
+                     help="JSON of decisions to apply "
+                          "(same format as resolve-textbooks)")
     prc.set_defaults(func=cmd_registry_cleanup)
 
     prt.add_argument("--list", dest="list_candidates", action="store_true",
-                     help="Liste sur stdout les refs candidates en JSON")
+                     help="List candidate refs as JSON on stdout")
     prt.add_argument("--apply-from", dest="apply_from",
-                     help="Path d'un JSON de décisions à appliquer")
+                     help="Path to a JSON of decisions to apply")
     prt.set_defaults(func=cmd_resolve_textbooks)
 
     psr = sub.add_parser("search",
-                         help="Recherche dans le registre validé")
-    psr.add_argument("query", help="Terme à chercher (auteur, titre, année, slug)")
+                         help="Search the validated registry")
+    psr.add_argument("query", help="Term to search for (author, title, year, slug)")
     psr.add_argument("--include-pending", action="store_true",
-                     help="Inclure aussi les refs page1_validated (pas seulement sota_cited_confirmed)")
-    psr.add_argument("--limit", type=int, default=50, help="Nb max de résultats")
+                     help="Also include page1_validated refs (not only sota_cited_confirmed)")
+    psr.add_argument("--limit", type=int, default=50, help="Max number of results")
     psr.set_defaults(func=cmd_search)
 
     pin = sub.add_parser("ingest",
-                         help="Ingest citations d'un SOTA dans le registre")
+                         help="Ingest a SOTA's citations into the registry")
     pin.add_argument("sota", nargs="?", default=None,
-                     help="Chemin du SOTA à ingérer (sauf --init-git ou --all)")
+                     help="Path of the SOTA to ingest (unless --init-git or --all)")
     pin.add_argument("--init-git", action="store_true",
-                     help="Initialise git dans le vault (1ère fois)")
+                     help="Initialise git in the vault (first time)")
     pin.add_argument("--extract-only", action="store_true",
-                     help="Liste les sections bibliographiques en JSON sur stdout, n'ingère rien")
+                     help="List bibliographic sections as JSON on stdout, ingest nothing")
     pin.add_argument("--citations-json",
-                     help="Chemin d'un JSON de citations déjà parsées par le sub-agent")
+                     help="Path to a JSON of citations already parsed by the sub-agent")
     pin.add_argument("--apply", action="store_true",
-                     help="Applique l'ingestion (crée refs + substitue). Sans : dry-run.")
+                     help="Apply the ingestion (create refs + substitute). Without it: dry-run.")
     pin.add_argument("--all", dest="all_sotas", action="store_true",
-                     help="Scan tous les SOTAs du vault (dry-run par défaut)")
+                     help="Scan every SOTA in the vault (dry-run by default)")
     pin.add_argument("--json", dest="json_output", action="store_true",
-                     help="Sortie JSON structurée (métriques) au lieu du récap "
-                          "humain. Pour scripting et fixtures de test.")
+                     help="Structured JSON output (metrics) instead of the human "
+                          "summary. For scripting and test fixtures.")
     pin.set_defaults(func=cmd_ingest)
 
     ppu = sub.add_parser("purge",
-                         help="Nettoie les wikilinks invalides d'un SOTA "
-                              "(retracted, _0000_*, suffixes moches, paths "
-                              "techniques)")
-    ppu.add_argument("sota", help="Chemin du SOTA à purger")
+                         help="Clean a SOTA's invalid wikilinks (retracted, "
+                              "_0000_*, ugly suffixes, technical paths)")
+    ppu.add_argument("sota", help="Path of the SOTA to purge")
     ppu.add_argument("--apply", action="store_true",
-                     help="Applique le plan (défaut : dry-run, affiche)")
+                     help="Apply the plan (default: dry-run, prints)")
     ppu.add_argument("--json", dest="json_output", action="store_true",
-                     help="Sortie JSON structurée pour scripting")
+                     help="Structured JSON output for scripting")
     ppu.set_defaults(func=cmd_purge)
 
     pid = sub.add_parser("identify",
-                         help="Rapport d'identification d'un SOTA (read-only)")
-    pid.add_argument("sota", help="Chemin du SOTA à analyser")
+                         help="Identification report for a SOTA (read-only)")
+    pid.add_argument("sota", help="Path of the SOTA to analyse")
     pid.add_argument("--citations-json", required=True,
-                     help="JSON de citations parsées (sub-agent citation-parser)")
+                     help="JSON of parsed citations (citation-parser sub-agent)")
     pid.add_argument("--json", dest="json_output", action="store_true",
-                     help="Sortie JSON structurée pour scripting")
+                     help="Structured JSON output for scripting")
     pid.set_defaults(func=cmd_identify)
 
     pac = sub.add_parser("acquire",
-                         help="Cascade PDF ciblée sur les refs d'un SOTA")
-    pac.add_argument("sota", help="Chemin du SOTA")
+                         help="PDF cascade targeted at one SOTA's refs")
+    pac.add_argument("sota", help="Path of the SOTA")
     pac.add_argument("--citations-json",
-                     help="JSON parsé (optionnel, ajoute would_create slugs)")
+                     help="Parsed JSON (optional, adds would_create slugs)")
     pac.add_argument("--apply", action="store_true",
-                     help="Exécute les transitions (défaut : dry-run)")
+                     help="Execute the transitions (default: dry-run)")
     pac.add_argument("--json", dest="json_output", action="store_true",
-                     help="Sortie JSON structurée")
+                     help="Structured JSON output")
     pac.set_defaults(func=cmd_acquire)
 
     pli = sub.add_parser("linkify",
-                         help="Insère wikilinks (PDF/ancre) + section "
-                              "## Statut des sources")
-    pli.add_argument("sota", help="Chemin du SOTA à linkifier")
+                         help="Insert wikilinks (PDF/anchor) + the "
+                              "`## Statut des sources` section")
+    pli.add_argument("sota", help="Path of the SOTA to linkify")
     pli.add_argument("--citations-json", required=True,
-                     help="JSON de citations parsées (sub-agent citation-parser)")
+                     help="JSON of parsed citations (citation-parser sub-agent)")
     pli.add_argument("--apply", action="store_true",
-                     help="Applique (mute le SOTA + backup git)")
+                     help="Apply (mutates the SOTA + git backup)")
     pli.add_argument("--json", dest="json_output", action="store_true",
-                     help="Sortie JSON structurée")
+                     help="Structured JSON output")
     pli.set_defaults(func=cmd_linkify)
 
     pru = sub.add_parser("retract-uncited",
-                         help="Retract en lot les refs actives non citées hors INDEX")
+                         help="Bulk-retract active refs uncited outside INDEX")
     pru.add_argument("--apply", action="store_true",
-                     help="Exécute les retract (défaut : dry-run)")
+                     help="Execute the retractions (default: dry-run)")
     pru.add_argument("--reason", default=None,
-                     help="Raison personnalisée pour le journal")
+                     help="Custom reason recorded in the journal")
     pru.set_defaults(func=cmd_retract_uncited)
 
     par = sub.add_parser("arbitrate",
-                         help="Décision humaine sur une ref problématique")
-    par.add_argument("slug", help="Slug de la ref à arbitrer")
+                         help="Human decision on a problematic ref")
+    par.add_argument("slug", help="Slug of the ref to arbitrate")
     par.add_argument("--decision", required=True,
                      choices=("retract", "blocked", "investigate",
                               "unblock", "reject-pdf"),
                      help="retract: artefact; blocked: paywall/inaccessible; "
-                          "investigate: corriger frontmatter puis relancer; "
-                          "unblock: lever blocked_by et retenter cascade; "
-                          "reject-pdf: mauvaise source identifiée (TOC, "
-                          "mauvaise version) — quarantine + relance cascade")
+                          "investigate: fix frontmatter then re-run; "
+                          "unblock: lift blocked_by and retry the cascade; "
+                          "reject-pdf: wrong source identified (TOC, wrong "
+                          "edition) — quarantine + cascade re-run")
     par.add_argument("--reason", default="",
-                     help="Phrase courte justifiant la décision (loggée)")
+                     help="Short sentence justifying the decision (logged)")
     par.set_defaults(func=cmd_arbitrate)
 
     pdo = sub.add_parser("doctor",
-                         help="Lance les invariants I1-I19 (sur-couche worker)")
+                         help="Run invariants I1-I19 (worker overlay)")
     pdo.add_argument("--fix", action="store_true",
-                     help="Applique les fix_fn auto-fixable (I4 path, "
-                          "I6 sha, I9 renum, I5 semi, I22 wikilink orphan, "
-                          "I23 wikilink retracted)")
+                     help="Apply the auto-fixable fix_fn (I4 path, I6 sha, "
+                          "I9 renum, I5 semi, I22 orphan wikilink, "
+                          "I23 retracted wikilink)")
     pdo.add_argument("--severity", choices=("info", "warn", "error"),
                      default="info",
-                     help="Filtre min de sévérité (défaut: info = tout afficher)")
+                     help="Minimum severity filter (default: info = show everything)")
     pdo.add_argument("--json", action="store_true",
                      help="Sortie JSON machine-readable")
     pdo.add_argument("--correlate-rtfm", action="store_true",
                      dest="correlate_rtfm",
-                     help="Active Couche 5 — I16/I17/I19 (corrélation RTFM, "
-                          "appel `rtfm failed` CLI)")
+                     help="Enable Layer 5 — I16/I17/I19 (RTFM correlation, "
+                          "calls the `rtfm failed` CLI)")
     pdo.add_argument("--check-sha", action="store_true",
                      dest="check_sha",
-                     help="Active I18 — recompute sha256 sur tous les PDFs "
-                          "concernés (lent, opt-in)")
+                     help="Enable I18 — recompute sha256 on every affected "
+                          "PDF (slow, opt-in)")
     pdo.set_defaults(func=cmd_doctor)
 
     pev = sub.add_parser("events",
-                         help="Lit le journal JSONL filtré (Couche 3)")
+                         help="Read the filtered JSONL journal (Layer 3)")
     pev.add_argument("--since",
-                     help="Date ISO inclusive (YYYY-MM-DD), filtre par jour UTC")
+                     help="Inclusive ISO date (YYYY-MM-DD), filters by UTC day")
     pev.add_argument("--to", dest="to",
-                     help="État cible filtré (ex: page1_validated)")
+                     help="Filter by target state (e.g. page1_validated)")
     pev.add_argument("--cited-in", dest="cited_in",
-                     help="Intersection avec refs dont cited_in[].name == valeur")
+                     help="Intersect with refs whose cited_in[].name == value")
     pev.add_argument("--json", action="store_true",
                      help="Sortie machine-readable JSON")
     pev.set_defaults(func=cmd_events)

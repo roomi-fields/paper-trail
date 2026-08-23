@@ -67,9 +67,9 @@ def main() -> int:
                 free_text += 1
     if free_text:
         print(
-            f"[paper-trail] {p.name} contient {free_text} citation(s) en "
-            f"texte libre sans wikilink. Lancer `/paper-trail:ingest "
-            f"{p.name}` pour absorber dans le registre.",
+            f"[paper-trail] {p.name} contains {free_text} free-text "
+            f"citation(s) with no wikilink. Run `/paper-trail:ingest "
+            f"{p.name}` to absorb them into the registry.",
             file=sys.stderr,
         )
     return 0

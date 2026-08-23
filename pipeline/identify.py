@@ -164,7 +164,7 @@ def report_to_text(report: IdentifyReport) -> str:
             f"  WARN — wikilinks vers retracted: {stats['n_reuse_retracted']}"
         )
     if stats["n_orphan_pdf"]:
-        lines.append(f"  PDFs orphelins trouvés: {stats['n_orphan_pdf']}")
+        lines.append(f"  Orphan PDFs found: {stats['n_orphan_pdf']}")
 
     by_action: dict[str, list] = {}
     for m in report.mentions:

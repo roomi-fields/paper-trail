@@ -236,7 +236,7 @@ available. When they are not, it prints one line to stderr at cascade
 build time and the other sources carry on unchanged:
 
 ```
-[cascade] source annas_headful indisponible (no_display_run_under_xvfb) — …
+[cascade] annas_headful source unavailable (no_display_run_under_xvfb) — …
 ```
 
 That line is informational, not an error. To make the source available:

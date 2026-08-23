@@ -213,7 +213,7 @@ if __name__ == "__main__":
     print("=== Test: Recherche 'python programming' ===")
     try:
         results = api.search_books("python programming", file_type="pdf")
-        print(f"✓ {len(results)} résultats trouvés")
+        print(f"✓ {len(results)} results found")
         for book in results[:3]:
             print(f"  - {book.title[:60]}...")
             print(f"    Auteur: {book.author}")
@@ -222,7 +222,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"✗ Erreur: {e}")
 
-    print("\n=== Test: Détails d'un livre ===")
+    print("\n=== Test: book details ===")
     if results:
         try:
             book_info = api.get_book_info(results[0].link)
@@ -234,4 +234,4 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"✗ Erreur: {e}")
     else:
-        print("✗ Pas de résultats pour tester les détails")
+        print("✗ No results to test details with")

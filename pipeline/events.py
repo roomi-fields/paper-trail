@@ -158,5 +158,5 @@ def render_text(
         lines.append(format_event_line(ev))
     lines.append("")
     n_refs = len({ev.get("ref") for ev in events if ev.get("ref")})
-    lines.append(f"Total events : {len(events)}  —  refs distinctes : {n_refs}")
+    lines.append(f"Total events: {len(events)}  —  distinct refs: {n_refs}")
     return "\n".join(lines)

@@ -175,7 +175,7 @@ def run_all_checks(
                     # (pas dans la philo doctor de remonter des bugs internes
                     # en violations — mais on log discrètement)
                     import sys
-                    print(f"[doctor] WARN: {inv_name} crash sur {ref.slug}: "
+                    print(f"[doctor] WARN: {inv_name} crashed on {ref.slug}: "
                           f"{type(e).__name__}: {e}", file=sys.stderr)
                     continue
                 for d in dicts:
@@ -290,7 +290,7 @@ def format_report_markdown(violations: list[Violation]) -> str:
     n_fix = count_auto_fixable(violations)
 
     if not violations:
-        lines.append("Aucune violation détectée — registre sain.")
+        lines.append("No violation detected — registry healthy.")
         return "\n".join(lines)
 
     # Grouper par sévérité (ERROR > WARN > INFO)
@@ -306,8 +306,8 @@ def format_report_markdown(violations: list[Violation]) -> str:
         lines.append("")
 
     lines.append(
-        f"Récap : {counts['ERROR']} ERROR / {counts['WARN']} WARN / "
-        f"{counts['INFO']} INFO  —  {n_fix} auto-fixable(s) avec --fix"
+        f"Summary: {counts['ERROR']} ERROR / {counts['WARN']} WARN / "
+        f"{counts['INFO']} INFO  —  {n_fix} auto-fixable with --fix"
     )
     return "\n".join(lines)
 
@@ -366,7 +366,7 @@ def run_doctor_for_cli(
                 correlate_rtfm=correlate_rtfm,
                 check_sha=check_sha,
             )
-        prefix_note = f"\n[auto-fix] {fixed} violation(s) réparée(s), {skipped} skipped\n"
+        prefix_note = f"\n[auto-fix] {fixed} violation(s) repaired, {skipped} skipped\n"
     else:
         prefix_note = ""
 

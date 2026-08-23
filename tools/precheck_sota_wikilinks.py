@@ -99,10 +99,10 @@ def main() -> int:
         # explicitement et on laisse passer le write (mieux un faux
         # négatif passé qu'un faux positif bloquant légitime).
         print(
-            f"[paper-trail PreToolUse] registre inaccessible — check "
-            f"désactivé.\n"
-            f"  Détail : {type(e).__name__}: {str(e)[:200]}\n"
-            f"  Astuce : ajouter RESEARCH_VAULT_PATH à "
+            f"[paper-trail PreToolUse] registry unreachable — check "
+            f"disabled.\n"
+            f"  Detail: {type(e).__name__}: {str(e)[:200]}\n"
+            f"  Hint: add RESEARCH_VAULT_PATH to "
             f"~/.config/paper-trail/env.",
             file=sys.stderr,
         )

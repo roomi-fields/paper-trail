@@ -60,17 +60,17 @@ def plan_for(ref: Ref) -> Plan | None:
 
     if state == "candidate":
         return Plan("candidate_to_uid_resolved",
-                    "résoudre UID universel avec homonymy guard")
+                    "resolve universal UID with homonymy guard")
     if state == "uid_resolved":
         return Plan("uid_resolved_to_pdf_acquired",
-                    "lancer cascade 9 niveaux depuis première source non tentée")
+                    "run the cascade from the first untried source")
     if state == "pdf_acquired":
         return Plan("pdf_acquired_dispatch",
                     "probe PDF health + dispatch (page1 / awaiting_ocr / reacq)")
     if state == "needs_reacquisition":
         return Plan("needs_reacquisition_to_uid_resolved",
-                    "marquer pour re-cascade depuis source suivante")
+                    "mark for re-cascade from the next source")
     if state == "page1_validated":
         return None  # curator domain — claim_verification + sota_cited_confirmed
 
-    raise IllegalTransition(f"État inconnu pour ref {ref.slug!r}: {state!r}")
+    raise IllegalTransition(f"Unknown state for ref {ref.slug!r}: {state!r}")

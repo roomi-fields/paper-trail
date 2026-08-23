@@ -34,14 +34,14 @@ def main() -> int:
             timeout=120,
         )
     except (subprocess.TimeoutExpired, OSError) as e:
-        print(f"[paper-trail hook] SessionEnd doctor crashed : "
+        print(f"[paper-trail hook] SessionEnd doctor crashed: "
               f"{type(e).__name__}", file=sys.stderr)
         return 0  # non-blocking
 
     # Extract only the recap line for terseness
     recap = None
     for line in (proc.stdout or "").splitlines():
-        if line.startswith("Récap "):
+        if line.startswith("Summary:"):
             recap = line
             break
 

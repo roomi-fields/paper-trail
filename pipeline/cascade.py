@@ -772,11 +772,11 @@ def try_websearch(ref: Ref) -> tuple[str, dict]:
     queue_file = REGISTRY / "_websearch_queue.md"
     if not queue_file.exists():
         queue_file.write_text(
-            "# WebSearch queue — refs sans hit dans la cascade automatique\n\n"
-            "Ces refs ont épuisé Crossref/arXiv/OpenAlex/Unpaywall/HAL/CORE/"
-            "archive.org/Sci-Hub/AA sans trouver de PDF. Elles attendent une "
-            "recherche WebSearch manuelle via Claude Code interactif.\n\n"
-            "Format : `| slug | query | created_at | status |`\n\n"
+            "# WebSearch queue — refs with no hit in the automatic cascade\n\n"
+            "These refs exhausted Crossref/arXiv/OpenAlex/Unpaywall/HAL/CORE/"
+            "archive.org/Sci-Hub/AA without finding a PDF. They are waiting "
+            "for a manual WebSearch through interactive Claude Code.\n\n"
+            "Format: `| slug | query | created_at | status |`\n\n"
             "| slug | query | created_at | status |\n"
             "|------|-------|-----------|--------|\n",
             encoding="utf-8",
@@ -853,10 +853,10 @@ def _build_cascade() -> list[tuple[str, Callable[[Ref], tuple[str, dict]]]]:
         if _ok:
             cascade.append(("annas_headful_optin", try_annas_headful))
         else:
-            print(f"[cascade] source annas_headful indisponible ({_why}) — "
-                  f"les autres sources continuent normalement. Pour l'activer : "
-                  f"`pip install playwright && playwright install chromium`, puis "
-                  f"lancer sous `xvfb-run -a`. Détails : docs/ACQUISITION_HEADFUL.md",
+            print(f"[cascade] annas_headful source unavailable ({_why}) — "
+                  f"the other sources carry on normally. To enable it: "
+                  f"`pip install playwright && playwright install chromium`, "
+                  f"then run under `xvfb-run -a`. Details: docs/ACQUISITION_HEADFUL.md",
                   file=sys.stderr)
     cascade.append(("websearch", try_websearch))
     return cascade

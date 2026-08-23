@@ -109,15 +109,15 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--apply", action="store_true",
-                   help="Applique les mutations (défaut : dry-run)")
+                   help="Apply the mutations (default: dry-run)")
     p.add_argument("--limit", type=int, default=0,
-                   help="Cap sur le nombre de refs traitées (0 = pas de limite)")
+                   help="Cap on the number of refs processed (0 = no limit)")
     p.add_argument("--include-retracted", action="store_true",
-                   help="Inclut les refs en `retracted` (archive retracted_reason "
-                        "en legacy_retracted_reason, set state=candidate)")
+                   help="Include `retracted` refs (archives retracted_reason "
+                        "as legacy_retracted_reason, sets state=candidate)")
     p.add_argument("--only-retracted", action="store_true",
-                   help="Ne traite QUE les refs en `retracted` (implique "
-                        "--include-retracted, exclut les autres)")
+                   help="Process ONLY `retracted` refs (implies "
+                        "--include-retracted, excludes the rest)")
     args = p.parse_args()
 
     # Inventaire des refs
@@ -138,24 +138,24 @@ def main() -> int:
         if args.limit and len(targets) >= args.limit:
             break
 
-    print(f"# Reset registre — {len(targets)} ref(s) à reset")
+    print(f"# Registry reset — {len(targets)} ref(s) to reset")
     print(f"# Mode : {'APPLY (mutations)' if args.apply else 'DRY-RUN'}")
     print()
-    print(f"  - Total refs scannées : {retracted_count + other_count}")
+    print(f"  - Total refs scanned: {retracted_count + other_count}")
     if args.only_retracted:
-        print(f"  - Mode --only-retracted : seulement les retracted ({len(targets)})")
+        print(f"  - Mode --only-retracted: retracted only ({len(targets)})")
     elif args.include_retracted:
-        print(f"  - À reset (toutes) : {len(targets)} "
+        print(f"  - To reset (all): {len(targets)} "
               f"(dont {retracted_count} retracted + {other_count} autres)")
     else:
-        print(f"  - À reset (non-retracted) : {len(targets)}")
-        print(f"  - Préservées (retracted) : {retracted_count}")
+        print(f"  - To reset (non-retracted): {len(targets)}")
+        print(f"  - Preserved (retracted): {retracted_count}")
     print()
 
     # Distribution des états actuels (pour info)
     from collections import Counter
     state_counts = Counter(r.state for r in targets)
-    print("Distribution des états à reset :")
+    print("Distribution of states to reset:")
     for state, n in state_counts.most_common():
         print(f"  {state:<40} {n:>4}")
     print()
@@ -172,11 +172,11 @@ def main() -> int:
     print()
 
     if not args.apply:
-        print("Dry-run terminé. Relance avec --apply pour reset le registre.")
+        print("Dry-run finished. Re-run with --apply to reset the registry.")
         print("⚠️  Avant --apply : snapshot tar OBLIGATOIRE du _registry/refs/.")
         return 0
 
-    print("Application des resets…")
+    print("Applying resets…")
     saved = 0
     failed = 0
     for ref in targets:
@@ -190,8 +190,8 @@ def main() -> int:
                   file=sys.stderr)
 
     print()
-    print(f"Récap : {saved} reset, {failed} échec(s)")
-    print(f"Refs retracted préservées : {retracted_count}")
+    print(f"Summary: {saved} reset, {failed} failure(s)")
+    print(f"Retracted refs preserved: {retracted_count}")
     return 0 if failed == 0 else 1
 
 
