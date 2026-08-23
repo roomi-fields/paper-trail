@@ -5,19 +5,43 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.14] — 2026-08-23
+
+Documentation : tout ce que 0.3.13 a apporté est maintenant décrit là où
+un utilisateur le cherche, sans avoir à lire le code ni le journal des
+changements.
 
 ### Added
 
-- `docs/ACQUISITION_HEADFUL.md` : où faire tourner l'acquisition par
-  navigateur (conteneur sans écran, affichage virtuel, travail planifié),
-  avec recette d'image, points d'attention et test d'environnement.
+- `docs/ACQUISITION_HEADFUL.md` (en anglais, comme le reste de `docs/`) :
+  où faire tourner l'acquisition par navigateur — conteneur sans écran,
+  affichage virtuel, travail planifié — avec recette d'image, points
+  d'attention et test d'environnement.
+- `docs/USAGE.md` : la voie par navigateur dans la section des sources
+  étendues (ce que dit le message d'indisponibilité, comment l'activer,
+  budget par référence) ; une section sur la reprise automatique après
+  échec passager (`retry_after`, `transient_retries`, `--retry-exhausted`) ;
+  une entrée de dépannage pour « le pipeline ne rapporte que des refs
+  ignorées ».
+- `README.md` : la voie par navigateur dans le tableau des sources
+  étendues, le renvoi vers le document de déploiement, et
+  `RESEARCH_ANNAS_HEADFUL_BUDGET_S` dans le tableau des variables
+  d'environnement (également dans `INSTALL.md`).
 
 ### Fixed
 
 - Le module de la source par navigateur n'a plus besoin de la configuration
   du vault pour être importé : le test d'environnement documenté tourne dans
   un conteneur nu, avant toute configuration.
+- **Le décompte des sources était faux partout.** La documentation, les
+  compétences et les commandes annonçaient « 10 sources » — chiffre qui ne
+  correspond ni à la cascade par défaut (8) ni à la cascade complète (11
+  depuis l'ajout de la voie par navigateur). Corrigé dans `README.md`,
+  `docs/MARKETPLACE_ENTRY.md`, les deux compétences et les deux commandes
+  concernées.
+- Le message affiché quand la source par navigateur est indisponible dit
+  maintenant que les autres sources continuent normalement, la commande
+  d'installation et où lire la suite — il pouvait passer pour une erreur.
 
 ## [0.3.13] — 2026-08-23
 
