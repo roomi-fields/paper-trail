@@ -21,6 +21,9 @@ Deux détails de protocole découverts au passage :
   - le lien partenaire n'apparaît sur la page du créneau qu'après ~20 s ;
     les créneaux (`/0/0` … `/0/3`) sont contingentés, on les essaie en série.
 
+Déploiement (conteneur sans écran, travail planifié) :
+voir `docs/ACQUISITION_HEADFUL.md`.
+
 Activation : `RESEARCH_ENABLE_SHADOW_LIBS=1` **et** Playwright installé
 (`pip install playwright && playwright install chromium`) **et** un
 affichage disponible (`$DISPLAY`, typiquement fourni par `xvfb-run`).
