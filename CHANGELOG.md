@@ -5,6 +5,31 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Retour terrain (suite de l'issue #1) : 29 refs parfaitement acquérables
+sont restées immobilisées parce qu'un contingentement passager avait été
+traité comme un épuisement définitif. Cf. issue #3.
+
+### Added
+
+- **`pipeline run --retry-exhausted`** : lève les verrous
+  `cascade_exhausted_needs_manual` avant la passe, pour les reprises
+  automatiques (créneau libéré, nouvelle édition, source ajoutée depuis).
+  Les `blocked_by` posés par un humain ne sont pas touchés.
+
+### Fixed
+
+- **Un échec passager ne pose plus de verrou curateur.** Quand toutes les
+  tentatives d'une passe sont des indisponibilités temporaires
+  (contingentement d'un miroir, circuit-breaker, 502/503, timeout), la ref
+  reçoit un simple `retry_after` horodaté (recul progressif 15 min → 8 h)
+  au lieu de `blocked_by: cascade_exhausted_needs_manual`. Le dispatcher
+  la reprend d'elle-même une fois la date passée. Dès qu'un échec
+  définitif apparaît (404, page 1 refusée, aucune source), le
+  comportement historique — verrou et arbitrage humain — s'applique.
+- **`retry_after` est effacé** dès que la ref est acquise.
+
 ## [0.3.12] — 2026-06-13
 
 Retour terrain : la validation finale du SOTA bloquait à tort, signalant

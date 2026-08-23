@@ -311,6 +311,7 @@ def uid_resolved_to_pdf_acquired(ref: Ref) -> TransitionResult:
         success = attempts[-1]
         ref.frontmatter["pdf_path"] = success["pdf_path"]
         ref.frontmatter["pdf_sha256"] = success["pdf_sha256"]
+        ref.frontmatter.pop("retry_after", None)  # l'attente n'a plus lieu d'être
         append_state_history(ref, "pdf_acquired", by="worker_b",
                              meta={"via": success["source"]})
         save_ref(ref)
@@ -334,7 +335,19 @@ def uid_resolved_to_pdf_acquired(ref: Ref) -> TransitionResult:
                                 info["source"],
                                 meta={"pdf_path": info["pdf_path"]})
 
-    # Cascade épuisée — on bascule en cascade_exhausted_needs_manual
+    # Cascade épuisée. Distinguer deux situations très différentes :
+    #  - échecs DÉFINITIFS (404, pas de DOI, aucun résultat) → verrou curateur ;
+    #  - échecs TEMPORAIRES (contingentement d'un miroir, circuit-breaker,
+    #    502 passager) → aucune décision humaine à prendre, seulement du
+    #    temps à laisser passer. Poser un verrou dans ce cas immobilise des
+    #    refs parfaitement acquérables jusqu'à un `arbitrate --decision
+    #    unblock` manuel (cf. issue #3).
+    if _only_transient_failures(attempts):
+        ref.frontmatter["retry_after"] = _backoff_stamp(ref)
+        save_ref(ref)
+        return TransitionResult(False, "uid_resolved", None, "cascade_transient",
+                                blocked_reason="transient_sources_retry_later")
+
     ref.frontmatter["blocked_by"] = "cascade_exhausted_needs_manual"
     save_ref(ref)
     # Écrit un fichier de pistes à côté de la ref pour guider la résolution
@@ -342,6 +355,48 @@ def uid_resolved_to_pdf_acquired(ref: Ref) -> TransitionResult:
     _write_acquisition_hints(ref, attempts)
     return TransitionResult(False, "uid_resolved", None, "cascade_exhausted",
                             blocked_reason="all_9_sources_failed_or_skipped")
+
+
+# Verdicts et motifs qui traduisent une indisponibilité passagère : rien à
+# arbitrer, il suffit de réessayer plus tard.
+_TRANSIENT_VERDICTS = {
+    "skipped_breaker_open", "no_slot_delivered", "aucun_créneau",
+    "all_mirrors_no_slot", "skipped_already_rejected",
+}
+_TRANSIENT_HINTS = ("waitlist", "too many", "rate", "429", "502", "503",
+                    "timeout", "timed out", "temporarily")
+
+
+def _only_transient_failures(attempts: list[dict]) -> bool:
+    """Vrai si cette passe n'a rencontré que des indisponibilités passagères.
+
+    Prudence volontaire : la moindre trace d'échec définitif (404, absence
+    de source, page 1 refusée) rend la fonction fausse — on retombe alors
+    sur le verrou curateur, comportement historique.
+    """
+    if not attempts:
+        return False
+    seen_transient = False
+    for a in attempts:
+        verdict = str(a.get("verdict") or "")
+        reason = str(a.get("reason") or "").lower()
+        if verdict == "success":
+            return False
+        if verdict in _TRANSIENT_VERDICTS or any(h in reason for h in _TRANSIENT_HINTS):
+            seen_transient = True
+            continue
+        return False  # échec définitif → arbitrage humain justifié
+    return seen_transient
+
+
+def _backoff_stamp(ref: Ref) -> str:
+    """Prochaine tentative possible : recul progressif 15 min → 8 h."""
+    from datetime import datetime, timedelta, timezone
+    n = sum(1 for h in (ref.frontmatter.get("state_history") or [])
+            if (h.get("meta") or {}).get("transient_retry"))
+    minutes = min(15 * (2 ** n), 480)
+    return (datetime.now(timezone.utc) + timedelta(minutes=minutes)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
 
 
 def _write_acquisition_hints(ref: Ref, attempts: list[dict]) -> None:

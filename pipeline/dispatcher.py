@@ -44,6 +44,20 @@ def plan_for(ref: Ref) -> Plan | None:
     if blocked_by and blocked_by not in ("", None):
         return None
 
+    # Indisponibilité passagère (contingentement, breaker, 502) : la ref n'est
+    # pas verrouillée, elle patiente simplement jusqu'à `retry_after`. Passé
+    # cette date, la cascade repart toute seule — aucun arbitrage requis.
+    retry_after = ref.frontmatter.get("retry_after")
+    if retry_after:
+        from datetime import datetime, timezone
+        try:
+            due = datetime.strptime(str(retry_after), "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) < due:
+                return None
+        except ValueError:
+            pass  # horodatage illisible : on ne bloque pas pour si peu
+
     if state == "candidate":
         return Plan("candidate_to_uid_resolved",
                     "résoudre UID universel avec homonymy guard")
