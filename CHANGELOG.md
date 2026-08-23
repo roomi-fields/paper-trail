@@ -5,6 +5,34 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.16] — 2026-08-23
+
+### Fixed
+
+- **The browser route could not start a browser under `pipeline run`**
+  (issue #6). `pipeline run` caps the process address space at 1.5 GB, and
+  the guard that lifts the cap for the browser was nested *inside*
+  `sync_playwright()` instead of around it. The Playwright node driver is
+  spawned when that context manager is entered, so it inherited the cap —
+  and since Chromium is spawned by the driver, not by Python, lifting the
+  cap afterwards changed nothing. The browser died at launch
+  (`Connection closed while reading from the driver`) and the reference
+  ended up blocked. `pipeline acquire`, which sets no cap, was unaffected.
+  The two guards are now in the right order, and a test asserts the cap is
+  already lifted at the moment the driver is spawned.
+- **`RESEARCH_ANNAS_HEADFUL_BUDGET_S` is now enforced** (issue #7). The
+  budget was only consulted between download slots, so the anti-bot
+  challenge loop, page loads and mirror searches ran past it — one
+  reference was observed wedging a pass for over 11 minutes. Every browser
+  wait is now clipped to the remaining budget, and a wall-clock guard cuts
+  the attempt ~30 s past it, covering the one Playwright call that accepts
+  no timeout (waiting for a download to finish). Callers no longer need an
+  external process timeout as a backstop.
+- Running out of budget now always leaves the reference **retriable**.
+  Two paths previously reported a definitive verdict instead: exhausting
+  the budget while looking up the file identifier reported "no source",
+  and exhausting it on the last mirror reported the mirrors as tried.
+
 ## [0.3.15] — 2026-08-23
 
 ### Changed
@@ -532,4 +560,6 @@ See `NOTICE.md` for full attribution.
 
 ---
 
+[0.3.16]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.3.16
+[0.3.15]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.3.15
 [0.3.14]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.3.14

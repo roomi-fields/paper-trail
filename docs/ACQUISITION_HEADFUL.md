@@ -75,6 +75,11 @@ it is a one-off gesture, not a scheduling setting.
   budget when slots are saturated: `RESEARCH_ANNAS_HEADFUL_BUDGET_S`,
   **600 s by default**. Size the scheduled job's timeout on that budget
   times the number of refs likely to reach this source — not on the 2 min.
+  The budget is a hard cap, not an intention: every browser wait is clipped
+  to whatever is left of it, and a wall-clock guard cuts the attempt ~30 s
+  past the budget even if a download opens and then stalls. You do not need
+  an external timeout as a backstop; the reference comes back as a transient
+  failure and is retried later.
 - **Slot rationing**: past a few dozen files per session, slots get scarce.
   A reference that only hit transient unavailability is not locked: it gets
   a retry date (15 min on the first failure, doubling each time, capped at
