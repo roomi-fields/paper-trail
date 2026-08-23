@@ -19,6 +19,8 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 PROJ = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJ))
 
@@ -110,6 +112,22 @@ cited_in: []
 body stranger
 """
     (refs_dir / "stranger_ref.md").write_text(stranger, encoding="utf-8")
+
+
+# ─── Fixtures pytest ────────────────────────────────────────────────────────
+
+@pytest.fixture()
+def journal_dir(tmp_path: Path) -> Path:
+    d = tmp_path / "_journal"
+    _write_journal(d)
+    return d
+
+
+@pytest.fixture()
+def refs_dir(tmp_path: Path) -> Path:
+    d = tmp_path / "refs"
+    _write_refs(d)
+    return d
 
 
 # ─── Tests ──────────────────────────────────────────────────────────────────
