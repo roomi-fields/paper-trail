@@ -1,5 +1,5 @@
 ---
-description: Acquire PDFs via the 10-source cascade for a single ref by slug, or a batch filtered by state. Validates page 1 anti-homonymy on each download.
+description: Acquire PDFs via the 8-source cascade (11 with opt-in extended sources) for a single ref by slug, or a batch filtered by state. Validates page 1 anti-homonymy on each download.
 ---
 
 # `/paper-trail:cascade` — Run the PDF acquisition cascade
@@ -43,8 +43,9 @@ export RESEARCH_ENABLE_SHADOW_LIBS=1
 /paper-trail:cascade --state candidate --limit 10
 ```
 
-The cascade then has 10 sources. A disclaimer prints to stderr at the
-first cascade load of the session.
+The cascade then has 10 sources — 11 if the browser route is available
+as well (Playwright + a display, see `docs/ACQUISITION_HEADFUL.md`).
+A disclaimer prints to stderr at the first cascade load of the session.
 
 ## Output trace
 

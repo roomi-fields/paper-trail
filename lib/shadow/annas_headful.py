@@ -22,7 +22,7 @@ Deux détails de protocole découverts au passage :
     les créneaux (`/0/0` … `/0/3`) sont contingentés, on les essaie en série.
 
 Déploiement (conteneur sans écran, travail planifié) :
-voir `docs/ACQUISITION_HEADFUL.md`.
+voir `docs/ACQUISITION_HEADFUL.md` (en anglais, comme le reste de `docs/`).
 
 Activation : `RESEARCH_ENABLE_SHADOW_LIBS=1` **et** Playwright installé
 (`pip install playwright && playwright install chromium`) **et** un

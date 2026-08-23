@@ -61,7 +61,7 @@ A. EXHAUSTIVE RESEARCH
 
 B. ACQUISITION + PAGE 1 VALIDATION
    ├─ Delegate to pdf-cascade skill (paper-trail)
-   ├─ 10-source cascade + mandatory page 1 anti-homonymy validation
+   ├─ 8-source cascade (up to 11 opt-in) + mandatory page 1 anti-homonymy validation
    └─ → refs in state `page1_validated` (physical PDF + validated)
 
 C. READING / EXTRACTION
@@ -163,7 +163,7 @@ base is too thin or too noisy.
 ```
 "pdf-cascade skill : here are N refs in state `candidate` in
  $RESEARCH_REGISTRY_PATH/refs/. Resolve UIDs, download PDFs via the
- 10-source cascade, validate page 1. Return with the session report."
+ 8-source cascade (up to 11 opt-in), validate page 1. Return with the session report."
 ```
 
 **Do not attempt to acquire the PDFs yourself.** That's pdf-cascade's

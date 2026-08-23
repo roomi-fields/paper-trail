@@ -118,6 +118,9 @@ export S2_API_KEY="s2k-..."
 # See DISCLAIMER.md before enabling
 export RESEARCH_ENABLE_SHADOW_LIBS=1
 
+# Per-reference time budget for the browser route, in seconds (default 600)
+export RESEARCH_ANNAS_HEADFUL_BUDGET_S=600
+
 # NotebookLM in sota-writer phase A
 export RESEARCH_ENABLE_NOTEBOOKLM=1
 

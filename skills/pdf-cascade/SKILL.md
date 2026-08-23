@@ -1,9 +1,10 @@
 ---
 name: pdf-cascade
 description: >
-  Acquire PDFs for bibliographic references via a strict 10-source cascade
+  Acquire PDFs for bibliographic references via a strict 8-source cascade
   (Crossref OA → arXiv → OpenAlex → Unpaywall → HAL → CORE → archive.org →
-  WebSearch queue; optionally Sci-Hub + Anna's Archive in opt-in mode).
+  WebSearch queue; optionally Sci-Hub + Anna's Archive, plus Anna's via a
+  windowed browser, in opt-in mode).
   Each acquired PDF is validated against expected author/title/year (page 1
   anti-homonymy) before being accepted. Trigger this skill whenever the user
   wants to download a PDF for a reference, fill a cascade, retry an acquisition,
@@ -61,8 +62,9 @@ python -m pipeline run --state candidate --dry-run
 python -m pipeline reactivate-ocr
 ```
 
-The CLI invokes the 8-source cascade (or 10 sources if
-`RESEARCH_ENABLE_SHADOW_LIBS=1` — see DISCLAIMER.md). Each acquired
+The CLI invokes the 8-source cascade (10 with
+`RESEARCH_ENABLE_SHADOW_LIBS=1` — see DISCLAIMER.md — and 11 when the
+browser route is available too, see `docs/ACQUISITION_HEADFUL.md`). Each acquired
 PDF must pass page 1 validation (author + title similarity ≥ 0.3 +
 zero off-domain keywords) before being accepted into the registry.
 

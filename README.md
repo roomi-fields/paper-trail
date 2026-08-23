@@ -29,7 +29,8 @@ against the actual source text.
 - **Anti-homonymy guard** — page 1 of each downloaded PDF is matched
   against expected author, title, and domain keywords before
   acceptance
-- **10-source acquisition cascade** — Crossref OA, arXiv, OpenAlex,
+- **8-source acquisition cascade** (up to 11 with the opt-in extended
+  sources) — Crossref OA, arXiv, OpenAlex,
   Unpaywall, HAL, CORE, archive.org, WebSearch queue (plus optional
   extended sources, disabled by default and **strict opt-in** only —
   see [`DISCLAIMER.md`](DISCLAIMER.md))
@@ -70,11 +71,21 @@ academic indexing and full-text platforms.
 |---|---|---|
 | **Sci-Hub** | Paywalled scholarly literature, ~88M papers | `RESEARCH_ENABLE_SHADOW_LIBS=1` |
 | **Anna's Archive** | Books and articles, aggregates Library Genesis, Sci-Hub, Z-Library | `RESEARCH_ENABLE_SHADOW_LIBS=1` |
+| **Anna's Archive via browser** | Same coverage, when the plain HTTP route is blocked | Above **+** Playwright **+** a display — see [`docs/ACQUISITION_HEADFUL.md`](docs/ACQUISITION_HEADFUL.md) |
 
 Shadow-library activation is **explicit** and **per-session**. A
 disclaimer prints to stderr on first use. The user is responsible
 for legal compliance in their jurisdiction. See
 [`DISCLAIMER.md`](DISCLAIMER.md).
+
+Anna's Archive now answers the plain HTTP route with an anti-bot
+challenge, and its file server rejects a headless browser. The browser
+route drives a *windowed* Chromium instead — which runs fine in a
+container with no screen, inside a virtual display. It adds itself to the
+cascade only when Playwright and a display are both present, and says so
+on stderr when they are not; everything else keeps working without it.
+[`docs/ACQUISITION_HEADFUL.md`](docs/ACQUISITION_HEADFUL.md) has the
+container recipe and the scheduled-job command.
 
 ### MCP integrations
 
@@ -208,6 +219,9 @@ for the worker engine internals.
 
 - [`docs/USAGE.md`](docs/USAGE.md) — daily workflows
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system overview
+- [`docs/ACQUISITION_HEADFUL.md`](docs/ACQUISITION_HEADFUL.md) — running
+  browser-based acquisition in a headless container (virtual display,
+  scheduled job)
 - [`docs/LEGAL.md`](docs/LEGAL.md) — licensing and attribution
 - [`DISCLAIMER.md`](DISCLAIMER.md) — shadow libraries opt-in policy
 - [`NOTICE.md`](NOTICE.md) — third-party attributions
@@ -225,6 +239,7 @@ for the worker engine internals.
 | `RESEARCH_CONTACT_EMAIL` | `anonymous@example.org` | Email sent to Crossref, Semantic Scholar (politeness) |
 | `S2_API_KEY` | unset | Optional Semantic Scholar API key (stricter rate limit without) |
 | `RESEARCH_ENABLE_SHADOW_LIBS` | unset | Enable Anna's Archive & Sci-Hub (opt-in, see DISCLAIMER) |
+| `RESEARCH_ANNAS_HEADFUL_BUDGET_S` | `600` | Per-reference time budget for the browser route, in seconds |
 | `RESEARCH_ENABLE_NOTEBOOKLM` | unset | Enable NotebookLM in `sota-writer` phase A |
 | `RESEARCH_SKIP_END_DOCTOR` | unset | Skip the SessionEnd consistency check |
 

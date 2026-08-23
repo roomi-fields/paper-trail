@@ -1,25 +1,25 @@
-# Où faire tourner l'acquisition Anna's Archive (source `annas_headful`)
+# Where to run browser-based acquisition (`annas_headful` source)
 
-Réponse courte : **dans n'importe quel conteneur sans écran**, à condition
-d'y installer un *affichage virtuel*. Aucune machine de bureau, aucun écran
-physique, aucune session graphique utilisateur ne sont nécessaires.
+Short answer: **in any headless container**, provided you install a
+*virtual display* in it. No desktop machine, no physical screen and no
+graphical user session are required.
 
-## Le point contre-intuitif
+## The counter-intuitive part
 
-Le mode « sans interface » de Chromium **ne fonctionne pas** pour cette
-source, alors qu'il franchit pourtant le challenge anti-robot :
+Chromium's "headless" mode **does not work** for this source, even though
+it does clear the anti-bot challenge:
 
-| Étape | headless | headful sous Xvfb |
+| Step | headless | headful under Xvfb |
 |---|---|---|
-| Page `/scidb/` ou `/md5/` (DDoS-Guard) | ✅ passe | ✅ passe |
-| Lien partenaire obtenu | ✅ | ✅ |
-| **Téléchargement du fichier** | ❌ **502** systématique | ✅ **PDF valide** |
+| `/scidb/` or `/md5/` page (DDoS-Guard) | ✅ passes | ✅ passes |
+| Partner link obtained | ✅ | ✅ |
+| **File download** | ❌ consistent **502** | ✅ **valid PDF** |
 
-C'est le *serveur de fichiers partenaire* qui refuse, pas le site. Il faut
-donc un navigateur réellement fenêtré — mais la fenêtre peut s'ouvrir dans
-un framebuffer en mémoire (Xvfb), invisible et sans matériel graphique.
+It is the *partner file server* that refuses, not the site itself. So a
+genuinely windowed browser is needed — but the window can live in an
+in-memory framebuffer (Xvfb): invisible, and with no graphics hardware.
 
-## Recette conteneur (Debian/Ubuntu)
+## Container recipe (Debian/Ubuntu)
 
 ```dockerfile
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -32,11 +32,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install playwright && playwright install chromium
 ```
 
-Les noms de paquets système changent d'une version de distribution à
-l'autre (`libasound2` est devenu `libasound2t64` sur les plus récentes).
-Pour éviter d'avoir à suivre ces renommages, Playwright sait installer
-lui-même ce dont le navigateur a besoin — il reste alors uniquement `xvfb`
-à ajouter à la main :
+System package names drift between distribution releases (`libasound2`
+became `libasound2t64` on recent ones). To avoid tracking those renames,
+let Playwright install what the browser needs itself — only `xvfb` is then
+left to add by hand:
 
 ```dockerfile
 RUN apt-get update && apt-get install -y --no-install-recommends xvfb \
@@ -44,7 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends xvfb \
 RUN pip install playwright && playwright install --with-deps chromium
 ```
 
-Lancement (l'acquisition hebdomadaire, par exemple) :
+Launch (a weekly acquisition job, for instance):
 
 ```bash
 RESEARCH_ENABLE_SHADOW_LIBS=1 \
@@ -52,65 +51,59 @@ xvfb-run -a --server-args="-screen 0 1400x1000x24" \
     python -m pipeline run --loop
 ```
 
-**`RESEARCH_ENABLE_SHADOW_LIBS=1` n'est pas optionnel** : sans lui, ni cette
-source ni les autres sources étendues n'entrent dans la cascade — le travail
-tourne sans erreur et sans jamais utiliser le navigateur. Cf. `DISCLAIMER.md`
-sur ce que cette activation engage.
+**`RESEARCH_ENABLE_SHADOW_LIBS=1` is not optional**: without it, neither
+this source nor the other extended sources enter the cascade — the job runs
+without error and never uses the browser. See `DISCLAIMER.md` for what that
+activation commits you to.
 
-`xvfb-run -a` choisit un numéro d'affichage libre : plusieurs travaux
-peuvent cohabiter sans se marcher dessus.
+`xvfb-run -a` picks a free display number, so several jobs can coexist
+without stepping on each other.
 
-`--retry-exhausted` (voir plus bas) est délibérément absent de cette
-commande : c'est un geste ponctuel, pas un réglage de planification.
+`--retry-exhausted` (see below) is deliberately absent from this command:
+it is a one-off gesture, not a scheduling setting.
 
-## Points d'attention en conteneur
+## Things to watch for in a container
 
-- **`--no-sandbox`** est déjà passé par la source (obligatoire pour
-  Chromium dans un conteneur non privilégié).
-- **`/dev/shm`** : Docker alloue 64 Mo par défaut, ce qui fait planter
-  Chromium sur des pages lourdes. Lancer avec `--shm-size=1g`.
-- **Mémoire** : compter ~500 Mo pour Chromium + Xvfb en plus du pipeline.
-- **Durée** : les créneaux « slow download » imposent une vingtaine de
-  secondes d'attente par tentative, et la source essaie quatre créneaux
-  par miroir. Compter ~2 min par référence dans le cas favorable, mais
-  jusqu'au budget par référence quand les créneaux sont saturés :
-  `RESEARCH_ANNAS_HEADFUL_BUDGET_S`, **600 s par défaut**. Dimensionner le
-  délai du travail planifié sur ce budget multiplié par le nombre de refs
-  susceptibles d'arriver jusqu'à cette source, pas sur les 2 min.
-- **Contingentement** : au-delà de quelques dizaines de fichiers par
-  session, les créneaux se raréfient. Une référence qui n'a rencontré que
-  des indisponibilités passagères n'est pas verrouillée : elle reçoit une
-  date de reprise (15 min au premier échec, doublée à chaque fois,
-  plafonnée à 8 h) et le pipeline l'ignore jusque-là. Elle ne repart donc
-  pas à la passe suivante, mais à la première passe postérieure à cette
-  date — d'où l'intérêt d'une planification récurrente plutôt que d'une
-  passe unique.
-- **`--retry-exhausted`** lève les verrous d'épuisement de cascade posés
-  automatiquement, pour que les références concernées soient réessayées.
-  À réserver aux reprises ponctuelles — après l'ajout d'une source, par
-  exemple. Dans un travail récurrent, il relance la cascade complète, à
-  chaque exécution, sur des références dont l'épuisement a déjà été
-  constaté ; les verrous posés par une personne ne sont pas touchés.
-- **Vérification rapide** que l'environnement est bon :
-
-Depuis la racine du plugin (aucune variable d'environnement n'est
-nécessaire pour ce seul test) :
+- **`--no-sandbox`** is already passed by the source (required for Chromium
+  in an unprivileged container).
+- **`/dev/shm`**: Docker allocates 64 MB by default, which crashes Chromium
+  on heavy pages. Run with `--shm-size=1g`.
+- **Memory**: budget ~500 MB for Chromium + Xvfb on top of the pipeline.
+- **Duration**: "slow download" slots impose roughly twenty seconds of
+  waiting per attempt, and the source tries four slots per mirror. Count
+  ~2 min per reference in the favourable case, but up to the per-reference
+  budget when slots are saturated: `RESEARCH_ANNAS_HEADFUL_BUDGET_S`,
+  **600 s by default**. Size the scheduled job's timeout on that budget
+  times the number of refs likely to reach this source — not on the 2 min.
+- **Slot rationing**: past a few dozen files per session, slots get scarce.
+  A reference that only hit transient unavailability is not locked: it gets
+  a retry date (15 min on the first failure, doubling each time, capped at
+  8 h) and the pipeline skips it until then. So it does not resume on the
+  next pass, but on the first pass after that date — hence the value of a
+  recurring schedule over a single run.
+- **`--retry-exhausted`** lifts the automatically-placed cascade exhaustion
+  locks so the affected references are retried. Keep it for one-off
+  resumptions — after adding a source, for example. In a recurring job it
+  replays the full cascade, on every run, over references whose exhaustion
+  has already been established; locks placed by a human are left untouched.
+- **Quick environment check.** From the plugin root (no environment
+  variable is needed for this check alone):
 
 ```bash
 xvfb-run -a python -c "from lib.shadow.annas_headful import available; print(available())"
-# attendu : (True, 'ok')
-# sans affichage : (False, 'no_display_run_under_xvfb')
-# sans Playwright : (False, 'playwright_not_installed')
+# expected:            (True, 'ok')
+# without a display:   (False, 'no_display_run_under_xvfb')
+# without Playwright:  (False, 'playwright_not_installed')
 ```
 
-Sans affichage ni Playwright, la source se déclare simplement indisponible
-et la cascade continue sans elle : le pipeline reste fonctionnel, il perd
-seulement cette source.
+With neither display nor Playwright, the source simply declares itself
+unavailable and the cascade carries on without it: the pipeline stays
+functional, it just loses that one source.
 
-## Alternative sans conteneur graphique
+## Alternative without a graphical container
 
-Si la politique d'exploitation interdit d'installer un navigateur en
-production, l'acquisition peut tourner ailleurs (poste de travail, machine
-d'administration, conteneur dédié) sur le **même registre partagé** : la
-source écrit les PDF dans `RESEARCH_SOURCES_PATH` et met à jour les fiches.
-La production n'a alors qu'à lire le registre.
+If operational policy forbids installing a browser in production,
+acquisition can run elsewhere (workstation, admin machine, dedicated
+container) against the **same shared registry**: the source writes PDFs to
+`RESEARCH_SOURCES_PATH` and updates the reference records. Production then
+only has to read the registry.

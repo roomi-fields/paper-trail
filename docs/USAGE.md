@@ -10,8 +10,9 @@ Daily workflows with the `paper-trail` plugin.
 4. [Auditing an existing SOTA or paper](#4-auditing-an-existing-sota-or-paper)
 5. [Daily registry maintenance](#5-daily-registry-maintenance)
 6. [Shadow libraries opt-in](#6-shadow-libraries-opt-in)
-7. [Integrity hooks](#7-integrity-hooks)
-8. [Troubleshooting](#8-troubleshooting)
+7. [When acquisition is only temporarily stuck](#7-when-acquisition-is-only-temporarily-stuck)
+8. [Integrity hooks](#8-integrity-hooks)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -214,8 +215,8 @@ On the first cascade load of the session, a disclaimer is printed to
 stderr.
 
 All shadow-library acquisitions are prefixed `_optin` in the registry
-(`acquisition_attempts[].via = scihub_optin` or `annas_archive_optin`)
-for traceability.
+(`acquisition_attempts[].via = scihub_optin`, `annas_archive_optin` or
+`annas_headful_optin`) for traceability.
 
 Valid for the duration of the parent shell. To disable:
 
@@ -223,7 +224,67 @@ Valid for the duration of the parent shell. To disable:
 unset RESEARCH_ENABLE_SHADOW_LIBS
 ```
 
-## 7. Integrity hooks
+### The browser route (`annas_headful_optin`)
+
+Anna's Archive now answers the plain HTTP route with an anti-bot
+challenge, and its file server rejects a headless browser. A third source
+drives a *windowed* Chromium instead — which needs no screen: a virtual
+display in a container is enough.
+
+It joins the cascade only when Playwright **and** a display are both
+available. When they are not, it prints one line to stderr at cascade
+build time and the other sources carry on unchanged:
+
+```
+[cascade] source annas_headful indisponible (no_display_run_under_xvfb) — …
+```
+
+That line is informational, not an error. To make the source available:
+
+```bash
+pip install playwright && playwright install chromium
+RESEARCH_ENABLE_SHADOW_LIBS=1 xvfb-run -a python -m pipeline run --loop
+```
+
+Because slots are rationed, one reference can take up to
+`RESEARCH_ANNAS_HEADFUL_BUDGET_S` (600 s by default) before the source
+gives up and the reference is retried later.
+
+See [`ACQUISITION_HEADFUL.md`](ACQUISITION_HEADFUL.md) for the container
+recipe, the scheduled-job command and the things to watch for.
+
+## 7. When acquisition is only temporarily stuck
+
+A reference whose cascade failed for reasons that time alone will fix — a
+mirror rationing its slots, an open circuit-breaker, a 502 — is **not**
+locked for human arbitration. It gets two frontmatter fields instead:
+
+| Field | Meaning |
+|---|---|
+| `retry_after` | UTC timestamp before which the pipeline skips this reference |
+| `transient_retries` | Consecutive waits so far — drives the back-off |
+
+The wait starts at 15 minutes and doubles on each consecutive failure, up
+to 8 hours; both fields are cleared as soon as the PDF is acquired. Such a
+reference resumes on its own, so it needs no action — it will simply be
+skipped by any pass running before its retry date.
+
+A reference that hit a *definitive* failure (404, no DOI, page 1 rejected,
+a file already refused once) still gets `blocked_by:
+cascade_exhausted_needs_manual` and waits for your arbitration, as before.
+
+To lift those automatic locks in bulk — after adding a source, typically —
+and retry them in the same pass:
+
+```bash
+python -m pipeline run --retry-exhausted
+```
+
+Locks placed by a human are left untouched. This is a one-off gesture: in
+a recurring job it replays the full cascade, on every run, over references
+whose exhaustion has already been established.
+
+## 8. Integrity hooks
 
 Three hooks built into the plugin:
 
@@ -257,7 +318,7 @@ At the end of each Claude Code session, the plugin runs
 
 Skip via `export RESEARCH_SKIP_END_DOCTOR=1`.
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 ### `/paper-trail:cascade` says "another pipeline session running"
 
@@ -294,6 +355,25 @@ rtfm failed -f json | jq '.failures[] | select(.filepath | contains("<slug>"))'
 If OCR genuinely failed: manually transition to
 `needs_reacquisition` to retry the cascade with a text source.
 
+### `pipeline run` reports nothing but `skipped_terminal`
+
+Two different situations, distinguished by the reference's frontmatter:
+
+- `retry_after` set — the reference is *waiting*, not stuck. It hit only
+  transient unavailability and will resume on its own after that
+  timestamp. Nothing to do. See §7.
+- `blocked_by: cascade_exhausted_needs_manual` — the cascade genuinely
+  ran out, and your arbitration is needed:
+
+```bash
+/paper-trail:decide <slug>          # inspect and decide one reference
+python -m pipeline run --retry-exhausted   # or retry them all in bulk
+```
+
+If neither field is set and the state is terminal (`page1_validated`,
+`sota_cited_confirmed`, `retracted`), there is simply nothing left to do
+on that reference.
+
 ### Cascade systematically fails on a source
 
 The per-source circuit breaker opens after N=5 consecutive failures
@@ -321,5 +401,7 @@ other vault, set `RESEARCH_VAULT_PATH` at minimum.
 - `docs/ARCHITECTURE.md` — system overview
 - `docs/LEGAL.md` — licenses and attributions
 - `DISCLAIMER.md` — shadow libraries
+- `ACQUISITION_HEADFUL.md` — browser-based acquisition in a headless
+  container
 - `pipeline/USAGE.md` — underlying worker CLI
 - `pipeline/ARCHITECTURE.md` — FSM and cascade detail

@@ -854,7 +854,9 @@ def _build_cascade() -> list[tuple[str, Callable[[Ref], tuple[str, dict]]]]:
             cascade.append(("annas_headful_optin", try_annas_headful))
         else:
             print(f"[cascade] source annas_headful indisponible ({_why}) — "
-                  f"lancer sous `xvfb-run -a` avec playwright installé pour l'activer",
+                  f"les autres sources continuent normalement. Pour l'activer : "
+                  f"`pip install playwright && playwright install chromium`, puis "
+                  f"lancer sous `xvfb-run -a`. Détails : docs/ACQUISITION_HEADFUL.md",
                   file=sys.stderr)
     cascade.append(("websearch", try_websearch))
     return cascade
