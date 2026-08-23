@@ -5,5 +5,8 @@ pyyaml>=6.0
 lxml>=4.9
 # pour cascade_sources (Semantic Scholar text extraction)
 pypdf>=4.0
-# Optional: pour Anna's Archive /slow_download (Turnstile)
+# Optional: source `annas_headful` — Anna's /slow_download via navigateur
+# VISIBLE (le serveur de fichiers partenaire répond 502 en headless).
+# Installation : pip install playwright && playwright install chromium
+# Usage : xvfb-run -a --server-args="-screen 0 1400x1000x24" python -m pipeline run
 # playwright>=1.40

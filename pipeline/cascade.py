@@ -842,6 +842,20 @@ def _build_cascade() -> list[tuple[str, Callable[[Ref], tuple[str, dict]]]]:
             ("scihub_optin", try_scihub),
             ("annas_archive_optin", try_annas_archive),
         ]
+        # Dernier recours avant la queue websearch : Anna's piloté par un
+        # navigateur *visible*. Le serveur de fichiers partenaire répond 502
+        # à un navigateur invisible mais sert normalement un navigateur
+        # fenêtré (cf. issue #1). Ne s'active que si Playwright et un
+        # affichage sont là — sinon la source se déclare `no_source`.
+        from lib.shadow.annas_headful import available as _headful_available
+        from lib.shadow.annas_headful import try_annas_headful
+        _ok, _why = _headful_available()
+        if _ok:
+            cascade.append(("annas_headful_optin", try_annas_headful))
+        else:
+            print(f"[cascade] source annas_headful indisponible ({_why}) — "
+                  f"lancer sous `xvfb-run -a` avec playwright installé pour l'activer",
+                  file=sys.stderr)
     cascade.append(("websearch", try_websearch))
     return cascade
 

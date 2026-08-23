@@ -7,40 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Retour terrain (suite de l'issue #1) : 29 refs parfaitement acquérables
-sont restées immobilisées parce qu'un contingentement passager avait été
-traité comme un épuisement définitif. Cf. issue #3.
+Retour terrain (7 SOTA, 95 refs, cf. issues #1 et #3) : la cascade Anna's
+Archive ne ramenait plus rien, et 29 refs parfaitement acquérables sont
+restées immobilisées parce qu'un contingentement passager avait été traité
+comme un épuisement définitif.
 
 ### Added
 
+- **Source de cascade `annas_headful_optin`** (`lib/shadow/annas_headful.py`) :
+  Anna's Archive piloté par un Chromium fenêtré, à lancer sous
+  `xvfb-run -a`. `cloudscraper` se prend un 403 DDoS-Guard, et un navigateur
+  invisible franchit bien le challenge mais le serveur de fichiers partenaire
+  lui répond 502 — un navigateur visible obtient le PDF. Résout le MD5
+  (champ `annas_md5`, puis `/scidb/<doi>`, puis recherche titre+auteur avec
+  filtre anti-homonymie), ouvre les créneaux `slow_download` en série, attend
+  le lien partenaire (~20 s) et télécharge par un vrai clic. Passe par
+  `_save_and_validate` comme toute autre source. S'auto-désactive (avec
+  message) si Playwright ou l'affichage manquent : aucun comportement
+  existant n'est modifié. Deux détails de protocole intégrés : la page
+  `/md5/` n'expose ses liens de téléchargement qu'avec `?&check=1`, et les
+  créneaux sont contingentés.
 - **`pipeline run --retry-exhausted`** : lève les verrous
   `cascade_exhausted_needs_manual` avant la passe, pour les reprises
   automatiques (créneau libéré, nouvelle édition, source ajoutée depuis).
-  Les `blocked_by` posés par un humain ne sont pas touchés.
+  Les `blocked_by` posés par un humain ne sont pas touchés. La levée n'a
+  lieu qu'à la première passe : en `--loop`, la refaire à chaque itération
+  relancerait la cascade complète sur des refs définitivement épuisées.
+- **Budget de temps par ref** pour la source par navigateur
+  (`RESEARCH_ANNAS_HEADFUL_BUDGET_S`, 600 s par défaut) : les créneaux
+  contingentés se sondent lentement, sans borne une seule ref pouvait
+  occuper la passe une demi-heure.
 
 ### Fixed
 
 - **Un échec passager ne pose plus de verrou curateur.** Quand toutes les
   tentatives d'une passe sont des indisponibilités temporaires
   (contingentement d'un miroir, circuit-breaker, 502/503, timeout), la ref
-  reçoit un simple `retry_after` horodaté (recul progressif 15 min → 8 h)
-  au lieu de `blocked_by: cascade_exhausted_needs_manual`. Le dispatcher
-  la reprend d'elle-même une fois la date passée. Dès qu'un échec
-  définitif apparaît (404, page 1 refusée, aucune source), le
-  comportement historique — verrou et arbitrage humain — s'applique.
-- **`retry_after` est effacé** dès que la ref est acquise.
-- La classification passager/définitif s'appuie sur le verdict (vocabulaire
-  fermé) avant le motif (texte libre). Un verdict inconnu est traité comme
-  définitif. Le fichier déjà refusé en page 1 (`skipped_already_rejected`)
-  est définitif : la source re-livre le même fichier, attendre n'y change
-  rien. Les motifs passagers sont cherchés avec des frontières explicites,
-  pour que `pdf_too_small [1502B]` ne passe pas pour un 502 et qu'un titre
-  contenant « rate » ne passe pas pour un quota dépassé.
-- Le recul progressif s'appuie sur un compteur d'attentes consécutives
-  (`transient_retries`), remis à zéro à l'acquisition et au déverrouillage.
-- `--retry-exhausted` ne lève les verrous qu'à la première passe : en mode
-  `--loop`, les relever à chaque itération relançait la cascade complète
-  sur des refs définitivement épuisées.
+  reçoit un simple `retry_after` horodaté (recul progressif 15 min → 8 h,
+  compteur `transient_retries` remis à zéro à l'acquisition et au
+  déverrouillage) au lieu de `blocked_by: cascade_exhausted_needs_manual`.
+  Le dispatcher la reprend d'elle-même une fois la date passée. Dès qu'un
+  échec définitif apparaît (404, page 1 refusée, aucune source, fichier
+  déjà refusé), le comportement historique — verrou et arbitrage humain —
+  s'applique. La classification s'appuie sur le verdict (vocabulaire fermé)
+  avant le motif (texte libre), avec des frontières explicites pour que
+  `pdf_too_small [1502B]` ne passe pas pour un 502 et qu'un titre contenant
+  « rate » ne passe pas pour un quota dépassé ; verdict inconnu = définitif.
+- **La borne mémoire de `pipeline run` empêchait tout navigateur de
+  démarrer.** `run` se posait une limite d'espace d'adressage de 1,5 Go en
+  fixant aussi la limite dure — donc irréversible, et héritée par les
+  processus fils : Chromium, qui réserve des dizaines de Go d'adressage
+  virtuel, mourait au démarrage. La limite dure d'origine est préservée et
+  la borne est temporairement levée le temps de lancer le navigateur.
+- **Dépendance manquante = toutes les refs « blocked » sans motif.** Sur un
+  interpréteur sans `bs4`, chaque ref plantait l'une après l'autre et le
+  récap affichait `blocked=N` sans que le doctor ne signale la cause.
+  `pipeline run` vérifie désormais ses dépendances avant la première ref,
+  échoue avec un message explicite et rend un code de sortie non nul.
+
+### Changed
+
+- `requirements.txt` : la ligne `playwright` (toujours optionnelle) documente
+  l'installation du navigateur et le lancement sous `xvfb-run`.
 
 ## [0.3.12] — 2026-06-13
 
