@@ -60,6 +60,57 @@ SLOTS = (0, 1, 2, 3)
 # Les créneaux contingentés se sondent lentement (4 créneaux × 9 sondes × 8 s
 # par miroir). Sans borne, une seule ref peut occuper la passe une demi-heure.
 BUDGET_S = int(os.environ.get("RESEARCH_ANNAS_HEADFUL_BUDGET_S") or 600)
+# Marge au-delà du budget avant que le garde-fou dur ne coupe : les retours
+# ordonnés (cf. `_left_ms`) doivent gagner la course dans tous les cas normaux.
+GUARD_GRACE_S = 30
+
+
+def _left_ms(deadline: float, cap_ms: int) -> int:
+    """Millisecondes restantes avant l'échéance, plafonnées à `cap_ms`.
+
+    Renvoie 0 quand l'échéance est passée. Un appelant doit alors abandonner
+    sans appeler Playwright : pour Playwright `timeout=0` ne veut pas dire
+    « tout de suite » mais « jamais ».
+    """
+    return max(0, min(cap_ms, int((deadline - time.monotonic()) * 1000)))
+
+
+class _BudgetExpired(BaseException):
+    """Échéance dure atteinte. Dérive de `BaseException` volontairement :
+    les `except Exception` qui absorbent les aléas du navigateur ne doivent
+    pas l'avaler."""
+
+
+@contextlib.contextmanager
+def _wall_clock_guard(seconds: float):
+    """Garde-fou dur : interrompt le corps au bout de `seconds`.
+
+    Toutes les attentes du navigateur sont bornées explicitement, sauf une :
+    l'attente de fin de téléchargement (`download.path()`) n'accepte aucun
+    délai. Un serveur qui ouvre le transfert puis se tait immobiliserait la
+    passe entière (issue #7). L'alarme se réarme toutes les 15 s tant que le
+    corps n'a pas rendu la main, pour couvrir aussi la fermeture du
+    navigateur si elle se bloque à son tour.
+
+    Ne s'arme que dans le fil principal — seul endroit où un signal est
+    livré — et restaure l'alarme et le gestionnaire précédents.
+    """
+    import signal
+    import threading
+    if seconds <= 0 or threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def _fire(signum, frame):
+        raise _BudgetExpired
+
+    previous = signal.signal(signal.SIGALRM, _fire)
+    signal.setitimer(signal.ITIMER_REAL, seconds, 15.0)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 @contextlib.contextmanager
@@ -71,6 +122,9 @@ def _address_space_unbounded():
     dizaines de Go d'adressage virtuel : sous cette borne il meurt au
     démarrage. On remonte la limite douce au niveau de la limite dure le
     temps du lancement, puis on la remet.
+
+    L'ordre d'imbrication est critique : cette garde doit envelopper
+    `sync_playwright()`, jamais l'inverse. Voir `try_annas_headful`.
     """
     try:
         import resource
@@ -104,25 +158,38 @@ def available() -> tuple[bool, str]:
     return True, "ok"
 
 
-def _content(pg, tries: int = 3) -> str:
+def _content(pg, deadline: float, tries: int = 3) -> str:
     """`page.content()` échoue si la page navigue — on retente."""
     for _ in range(tries):
         try:
             return pg.content()
         except Exception:
-            pg.wait_for_timeout(2500)
+            pause = _left_ms(deadline, 2500)
+            if not pause:
+                return ""
+            pg.wait_for_timeout(pause)
     return ""
 
 
-def _load(pg, url: str, tries: int = 7, wait: int = 4000) -> str:
-    """Charge une page et patiente tant que le challenge anti-robot s'affiche."""
+def _load(pg, url: str, deadline: float, tries: int = 7, wait: int = 4000) -> str:
+    """Charge une page et patiente tant que le challenge anti-robot s'affiche.
+
+    Le challenge anti-robot boucle sur certaines adresses : sans plafonner
+    chaque attente au reste du budget, cette seule fonction le dépasse.
+    """
+    budget = _left_ms(deadline, 90000)
+    if not budget:
+        return ""
     try:
-        pg.goto(url, timeout=90000, wait_until="load")
+        pg.goto(url, timeout=budget, wait_until="load")
     except Exception:
         return ""
     for _ in range(tries):
-        pg.wait_for_timeout(wait)
-        html = _content(pg)
+        pause = _left_ms(deadline, wait)
+        if not pause:
+            return ""
+        pg.wait_for_timeout(pause)
+        html = _content(pg, deadline)
         try:
             title = pg.title()
         except Exception:
@@ -132,11 +199,13 @@ def _load(pg, url: str, tries: int = 7, wait: int = 4000) -> str:
     return ""
 
 
-def _md5_for(pg, ref: Ref) -> tuple[str | None, str]:
+def _md5_for(pg, ref: Ref, deadline: float) -> tuple[str | None, str]:
     """MD5 via le champ déjà connu, sinon `/scidb/<doi>`, sinon recherche."""
     fm = ref.frontmatter
     if fm.get("annas_md5"):
-        return fm["annas_md5"], "cached_md5"
+        return fm["annas_md5"], "cached_md5"   # gratuit : pas de budget en jeu
+    if time.monotonic() > deadline:
+        return None, "budget_exhausted"
 
     from pipeline.cascade import _doi
     doi = _doi(ref)
@@ -144,8 +213,11 @@ def _md5_for(pg, ref: Ref) -> tuple[str | None, str]:
 
     if doi:
         for mirror in mirrors:
+            if time.monotonic() > deadline:
+                return None, "budget_exhausted"
             found = re.findall(r"/md5/([0-9a-f]{32})",
-                               _load(pg, f"https://{mirror}/scidb/{quote(doi, safe=':/')}"))
+                               _load(pg, f"https://{mirror}/scidb/{quote(doi, safe=':/')}",
+                                     deadline))
             if found:
                 return found[0], f"scidb:{mirror}"
 
@@ -155,7 +227,10 @@ def _md5_for(pg, ref: Ref) -> tuple[str | None, str]:
         return None, "no_title_for_search"
     words = [w.lower() for w in re.findall(r"[A-Za-zÀ-ÿ]{6,}", title)][:4]
     for mirror in mirrors:
-        html = _load(pg, f"https://{mirror}/search?q={quote(f'{title} {author}')}")
+        if time.monotonic() > deadline:
+            return None, "budget_exhausted"
+        html = _load(pg, f"https://{mirror}/search?q={quote(f'{title} {author}')}",
+                     deadline)
         if not html:
             continue
         # un mot distinctif du titre doit apparaître dans le bloc du résultat
@@ -166,23 +241,25 @@ def _md5_for(pg, ref: Ref) -> tuple[str | None, str]:
     return None, "no_md5_found"
 
 
-def _download(pg, mirror: str, md5: str, patience: int = 9,
-              deadline: float | None = None) -> tuple[bytes | None, str]:
+def _download(pg, mirror: str, md5: str, deadline: float,
+              patience: int = 9) -> tuple[bytes | None, str]:
     """Parcourt les créneaux `slow_download` jusqu'à obtenir le fichier."""
     for slot in SLOTS:
-        if deadline and time.monotonic() > deadline:
+        budget = _left_ms(deadline, 90000)
+        if not budget:
             return None, "budget_exhausted"
         slot_url = f"https://{mirror}/slow_download/{md5}/0/{slot}"
         try:
-            pg.goto(slot_url, timeout=90000, wait_until="load")
+            pg.goto(slot_url, timeout=budget, wait_until="load")
         except Exception:
             continue
         link = None
         for _ in range(patience):
-            if deadline and time.monotonic() > deadline:
+            pause = _left_ms(deadline, 8000)
+            if not pause:
                 return None, "budget_exhausted"
-            pg.wait_for_timeout(8000)
-            html = _content(pg)
+            pg.wait_for_timeout(pause)
+            html = _content(pg, deadline)
             m = PARTNER_LINK.search(html)
             if m:
                 link = m.group(1)
@@ -192,9 +269,12 @@ def _download(pg, mirror: str, md5: str, patience: int = 9,
                 break  # créneau contingenté : passer au suivant
         if not link:
             continue
+        budget = _left_ms(deadline, 300000)
+        if not budget:
+            return None, "budget_exhausted"
         try:
-            with pg.expect_download(timeout=300000) as dl:
-                pg.click(f'a[href="{link}"]')
+            with pg.expect_download(timeout=budget) as dl:
+                pg.click(f'a[href="{link}"]', timeout=budget)
             data = Path(dl.value.path()).read_bytes()
             if data[:4] == b"%PDF":
                 return data, f"slow_slot{slot}"
@@ -214,28 +294,52 @@ def try_annas_headful(ref: Ref) -> tuple[str, dict]:
 
     mirrors = get_aa_mirrors()
     deadline = time.monotonic() + BUDGET_S
-    with sync_playwright() as pw, _address_space_unbounded():
-        browser = pw.chromium.launch(
-            headless=False,  # invisible ⇒ 502 côté serveur de fichiers
-            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"])
-        try:
-            ctx = browser.new_context(user_agent=UA, locale="en-US",
-                                      viewport={"width": 1360, "height": 900},
-                                      accept_downloads=True)
-            pg = ctx.new_page()
-            md5, via = _md5_for(pg, ref)
-            if not md5:
-                return "no_source", {"reason": via}
-            ref.frontmatter.setdefault("annas_md5", md5)
-            for mirror in mirrors:
-                if time.monotonic() > deadline:
-                    return "failed", {"reason": "budget_exhausted_retry_later",
-                                      "md5": md5, "via": via}
-                data, how = _download(pg, mirror, md5, deadline=deadline)
-                if data:
-                    verdict, info = _save_and_validate(data, ref)
-                    info.setdefault("via", f"{via}/{how}@{mirror}")
-                    return verdict, info
-            return "failed", {"reason": "all_mirrors_no_slot", "md5": md5, "via": via}
-        finally:
-            browser.close()
+    try:
+        # L'ordre des gardes n'est pas indifférent. `sync_playwright()` lance
+        # le pilote node dès son entrée, et c'est ce pilote — pas Python — qui
+        # lance ensuite Chromium. Le pilote hérite de la borne d'adressage en
+        # vigueur à l'instant où il naît : la lever après coup ne lui profite
+        # plus et le navigateur meurt au démarrage (issue #6). La garde doit
+        # donc être *à l'extérieur*.
+        with _wall_clock_guard(BUDGET_S + GUARD_GRACE_S), \
+                _address_space_unbounded(), sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                headless=False,  # invisible ⇒ 502 côté serveur de fichiers
+                args=["--disable-blink-features=AutomationControlled",
+                      "--no-sandbox"])
+            try:
+                ctx = browser.new_context(user_agent=UA, locale="en-US",
+                                          viewport={"width": 1360, "height": 900},
+                                          accept_downloads=True)
+                pg = ctx.new_page()
+                md5, via = _md5_for(pg, ref, deadline)
+                if not md5:
+                    if via == "budget_exhausted":
+                        return "failed", {"reason": "budget_exhausted_retry_later",
+                                          "via": "md5_lookup"}
+                    return "no_source", {"reason": via}
+                ref.frontmatter.setdefault("annas_md5", md5)
+                for mirror in mirrors:
+                    if time.monotonic() > deadline:
+                        break
+                    data, how = _download(pg, mirror, md5, deadline)
+                    if data:
+                        verdict, info = _save_and_validate(data, ref)
+                        info.setdefault("via", f"{via}/{how}@{mirror}")
+                        return verdict, info
+                # Budget épuisé ⇒ échec *passager* : la fiche reste reprenable.
+                # Miroirs épuisés dans les temps ⇒ échec passager aussi, mais
+                # pour une autre raison (créneaux tous contingentés).
+                spent = time.monotonic() > deadline
+                return "failed", {
+                    "reason": ("budget_exhausted_retry_later" if spent
+                               else "all_mirrors_no_slot"),
+                    "md5": md5, "via": via}
+            finally:
+                with contextlib.suppress(Exception):
+                    browser.close()
+    except _BudgetExpired:
+        # Le garde-fou dur a coupé : une attente non bornée par Playwright
+        # (fin de téléchargement) a dépassé le budget. Reprenable.
+        return "failed", {"reason": "budget_exhausted_retry_later",
+                          "via": "wall_clock_guard"}
