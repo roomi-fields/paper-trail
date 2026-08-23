@@ -5,366 +5,373 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.14] — 2026-08-23
+## [0.3.15] — 2026-08-23
 
-Documentation : tout ce que 0.3.13 a apporté est maintenant décrit là où
-un utilisateur le cherche, sans avoir à lire le code ni le journal des
-changements.
+### Changed
 
-### Added
-
-- `docs/ACQUISITION_HEADFUL.md` (en anglais, comme le reste de `docs/`) :
-  où faire tourner l'acquisition par navigateur — conteneur sans écran,
-  affichage virtuel, travail planifié — avec recette d'image, points
-  d'attention et test d'environnement.
-- `docs/USAGE.md` : la voie par navigateur dans la section des sources
-  étendues (ce que dit le message d'indisponibilité, comment l'activer,
-  budget par référence) ; une section sur la reprise automatique après
-  échec passager (`retry_after`, `transient_retries`, `--retry-exhausted`) ;
-  une entrée de dépannage pour « le pipeline ne rapporte que des refs
-  ignorées ».
-- `README.md` : la voie par navigateur dans le tableau des sources
-  étendues, le renvoi vers le document de déploiement, et
-  `RESEARCH_ANNAS_HEADFUL_BUDGET_S` dans le tableau des variables
-  d'environnement (également dans `INSTALL.md`).
+- **Everything a user reads is now in English.** Pipeline messages, CLI
+  help, hook warnings, the exhaustion hints file written next to the
+  registry, the WebSearch queue header, and this changelog. The repository
+  used to mix an English user-facing documentation with French runtime
+  output. Code comments and docstrings stay in French — they are internal.
 
 ### Fixed
 
-- Le module de la source par navigateur n'a plus besoin de la configuration
-  du vault pour être importé : le test d'environnement documenté tourne dans
-  un conteneur nu, avant toute configuration.
-- **Le décompte des sources était faux partout.** La documentation, les
-  compétences et les commandes annonçaient « 10 sources » — chiffre qui ne
-  correspond ni à la cascade par défaut (8) ni à la cascade complète (11
-  depuis l'ajout de la voie par navigateur). Corrigé dans `README.md`,
-  `docs/MARKETPLACE_ENTRY.md`, les deux compétences et les deux commandes
-  concernées.
-- Le message affiché quand la source par navigateur est indisponible dit
-  maintenant que les autres sources continuent normalement, la commande
-  d'installation et où lire la suite — il pouvait passer pour une erreur.
+- The SessionEnd hook looked for a summary line by its French prefix; the
+  prefix and the hook now move together, with the coupling covered by the
+  rename.
+
+## [0.3.14] — 2026-08-23
+
+Documentation: everything 0.3.13 brought is now described where a user
+looks for it, without having to read the source or this changelog.
+
+### Added
+
+- `docs/ACQUISITION_HEADFUL.md`: where to run browser-based acquisition —
+  headless container, virtual display, scheduled job — with a container
+  recipe, things to watch for, and an environment check.
+- `docs/USAGE.md`: the browser route in the extended-sources section (what
+  the unavailability message means, how to enable it, the per-reference
+  budget); a section on automatic resumption after a transient failure
+  (`retry_after`, `transient_retries`, `--retry-exhausted`); a
+  troubleshooting entry for "the pipeline reports nothing but skipped
+  refs".
+- `README.md`: the browser route in the extended-sources table, a pointer
+  to the deployment document, and `RESEARCH_ANNAS_HEADFUL_BUDGET_S` in the
+  environment-variable table (also in `INSTALL.md`).
+
+### Changed
+
+- **Pipeline messages and CLI help are now in English**, matching the rest
+  of the user-facing documentation. Code comments and docstrings stay in
+  French — they are internal.
+
+### Fixed
+
+- The browser-route module no longer needs the vault configuration to be
+  imported: the documented environment check runs in a bare container,
+  before any configuration.
+- **The source count was wrong everywhere.** Documentation, skills and
+  commands announced "10 sources" — a figure matching neither the default
+  cascade (8) nor the full one (11 since the browser route was added).
+  Corrected in `README.md`, `docs/MARKETPLACE_ENTRY.md`, both skills and
+  both commands concerned.
+- The message shown when the browser route is unavailable now says the
+  other sources carry on normally, gives the install command and points to
+  further reading — it could read as an error.
 
 ## [0.3.13] — 2026-08-23
 
-Retour terrain (7 SOTA, 95 refs, cf. issues #1 et #3) : la cascade Anna's
-Archive ne ramenait plus rien, et 29 refs parfaitement acquérables sont
-restées immobilisées parce qu'un contingentement passager avait été traité
-comme un épuisement définitif.
+Field reports (7 SOTAs, 95 refs, see issues #1 and #3): the Anna's Archive
+cascade stopped returning anything, and 29 perfectly acquirable refs sat
+immobilised because transient slot rationing had been treated as definitive
+exhaustion.
 
 ### Added
 
-- **Source de cascade `annas_headful_optin`** (`lib/shadow/annas_headful.py`) :
-  Anna's Archive piloté par un Chromium fenêtré, à lancer sous
-  `xvfb-run -a`. `cloudscraper` se prend un 403 DDoS-Guard, et un navigateur
-  invisible franchit bien le challenge mais le serveur de fichiers partenaire
-  lui répond 502 — un navigateur visible obtient le PDF. Résout le MD5
-  (champ `annas_md5`, puis `/scidb/<doi>`, puis recherche titre+auteur avec
-  filtre anti-homonymie), ouvre les créneaux `slow_download` en série, attend
-  le lien partenaire (~20 s) et télécharge par un vrai clic. Passe par
-  `_save_and_validate` comme toute autre source. S'auto-désactive (avec
-  message) si Playwright ou l'affichage manquent : aucun comportement
-  existant n'est modifié. Deux détails de protocole intégrés : la page
-  `/md5/` n'expose ses liens de téléchargement qu'avec `?&check=1`, et les
-  créneaux sont contingentés.
-- **`pipeline run --retry-exhausted`** : lève les verrous
-  `cascade_exhausted_needs_manual` avant la passe, pour les reprises
-  automatiques (créneau libéré, nouvelle édition, source ajoutée depuis).
-  Les `blocked_by` posés par un humain ne sont pas touchés. La levée n'a
-  lieu qu'à la première passe : en `--loop`, la refaire à chaque itération
-  relancerait la cascade complète sur des refs définitivement épuisées.
-- **Budget de temps par ref** pour la source par navigateur
-  (`RESEARCH_ANNAS_HEADFUL_BUDGET_S`, 600 s par défaut) : les créneaux
-  contingentés se sondent lentement, sans borne une seule ref pouvait
-  occuper la passe une demi-heure.
+- **`annas_headful_optin` cascade source** (`lib/shadow/annas_headful.py`):
+  Anna's Archive driven by a windowed Chromium, to be launched under
+  `xvfb-run -a`. `cloudscraper` gets a 403 from DDoS-Guard, and a headless
+  browser does clear the challenge but the partner file server answers it
+  with a 502 — a visible browser gets the PDF. Resolves the MD5 (the
+  `annas_md5` field, then `/scidb/<doi>`, then a title+author search with an
+  anti-homonymy filter), opens the `slow_download` slots in series, waits
+  for the partner link (~20 s) and downloads through a real click. Goes
+  through `_save_and_validate` like every other source. Disables itself
+  (with a message) when Playwright or the display is missing: no existing
+  behaviour changes. Two protocol details integrated: the `/md5/` page only
+  exposes its download links with `?&check=1`, and slots are rationed.
+- **`pipeline run --retry-exhausted`**: lifts `cascade_exhausted_needs_manual`
+  locks before the pass, for automatic resumptions (a slot freed up, a new
+  edition, a source added since). `blocked_by` values placed by a human are
+  left untouched. The lift happens on the first pass only: in `--loop`,
+  repeating it every iteration would replay the full cascade over
+  definitively exhausted refs.
+- **A per-reference time budget** for the browser route
+  (`RESEARCH_ANNAS_HEADFUL_BUDGET_S`, 600 s by default): rationed slots are
+  slow to probe, and without a bound a single ref could occupy a pass for
+  half an hour.
 
 ### Fixed
 
-- **Un échec passager ne pose plus de verrou curateur.** Quand toutes les
-  tentatives d'une passe sont des indisponibilités temporaires
-  (contingentement d'un miroir, circuit-breaker, 502/503, timeout), la ref
-  reçoit un simple `retry_after` horodaté (recul progressif 15 min → 8 h,
-  compteur `transient_retries` remis à zéro à l'acquisition et au
-  déverrouillage) au lieu de `blocked_by: cascade_exhausted_needs_manual`.
-  Le dispatcher la reprend d'elle-même une fois la date passée. Dès qu'un
-  échec définitif apparaît (404, page 1 refusée, aucune source, fichier
-  déjà refusé), le comportement historique — verrou et arbitrage humain —
-  s'applique. La classification s'appuie sur le verdict (vocabulaire fermé)
-  avant le motif (texte libre), avec des frontières explicites pour que
-  `pdf_too_small [1502B]` ne passe pas pour un 502 et qu'un titre contenant
-  « rate » ne passe pas pour un quota dépassé ; verdict inconnu = définitif.
-- **La borne mémoire de `pipeline run` empêchait tout navigateur de
-  démarrer.** `run` se posait une limite d'espace d'adressage de 1,5 Go en
-  fixant aussi la limite dure — donc irréversible, et héritée par les
-  processus fils : Chromium, qui réserve des dizaines de Go d'adressage
-  virtuel, mourait au démarrage. La limite dure d'origine est préservée et
-  la borne est temporairement levée le temps de lancer le navigateur.
-- **Dépendance manquante = toutes les refs « blocked » sans motif.** Sur un
-  interpréteur sans `bs4`, chaque ref plantait l'une après l'autre et le
-  récap affichait `blocked=N` sans que le doctor ne signale la cause.
-  `pipeline run` vérifie désormais ses dépendances avant la première ref,
-  échoue avec un message explicite et rend un code de sortie non nul.
-
-- **Descriptions de commandes non lues.** Les descriptions en tête des
-  fichiers de commande n'étaient pas entre guillemets : dès qu'elles
-  contenaient un deux-points, le fichier devenait illisible et la commande
-  disparaissait.
+- **A transient failure no longer places a curator lock.** When every
+  attempt in a pass is a temporary unavailability (a mirror rationing its
+  slots, an open circuit-breaker, a 502/503, a timeout), the ref simply
+  gets a timestamped `retry_after` (back-off from 15 min to 8 h, with a
+  `transient_retries` counter cleared on acquisition and on unlocking)
+  instead of `blocked_by: cascade_exhausted_needs_manual`. The dispatcher
+  picks it up again on its own once that date has passed. As soon as a
+  definitive failure appears (404, page 1 rejected, no source, a file
+  already refused), the historical behaviour — lock and human arbitration —
+  applies. Classification keys on the verdict (a closed vocabulary) before
+  the reason (free text), with explicit boundaries so that
+  `pdf_too_small [1502B]` is not read as a 502 and a title containing
+  "rate" is not read as a rate limit; an unknown verdict counts as
+  definitive.
+- **`pipeline run`'s memory bound prevented any browser from starting.**
+  `run` capped its address space at 1.5 GB while also setting the hard
+  limit — hence irreversible, and inherited by child processes: Chromium,
+  which reserves tens of GB of virtual address space, died on startup. The
+  original hard limit is now preserved, and the bound is lifted only while
+  launching the browser.
+- **A missing dependency meant every ref "blocked" with no reason.** On an
+  interpreter without `bs4`, each ref crashed one after another and the
+  summary showed `blocked=N` without the doctor reporting the cause.
+  `pipeline run` now checks its dependencies before the first ref, fails
+  with an explicit message, and returns a non-zero exit code.
+- **Command descriptions were not being read.** The descriptions at the top
+  of command files were not quoted: as soon as one contained a colon, the
+  file became unparseable and the command disappeared.
 
 ### Changed
 
-- `requirements.txt` : la ligne `playwright` (toujours optionnelle) documente
-  l'installation du navigateur et le lancement sous `xvfb-run`.
-- Présentation neutre des sources étendues optionnelles dans la page de
-  présentation publique.
+- `requirements.txt`: the `playwright` line (still optional) documents the
+  browser install and launching under `xvfb-run`.
+- Neutral framing of the optional extended sources in the public-facing
+  pitch.
 
 ### Added (documentation)
 
-- `PRIVACY.md` : aucune télémétrie, description honnête des flux de données
-  (quelles requêtes partent, vers quels services, avec quoi dedans).
+- `PRIVACY.md`: no telemetry, an honest description of the data flows
+  (which requests leave, to which services, carrying what).
 
 ## [0.3.12] — 2026-06-13
 
-Retour terrain : la validation finale du SOTA bloquait à tort, signalant
-20 citations « en texte libre » et 3 wikilinks « absents du registre »
-alors que tout était correct. Trois bugs cumulés dans les hooks
-PreToolUse.
+Field report: final SOTA validation was blocking wrongly, reporting 20
+"free-text" citations and 3 wikilinks "missing from the registry" when
+everything was in fact correct. Three compounding bugs in the PreToolUse
+hooks.
 
 ### Fixed
 
-- **Faux positif I22 quand le hook n'hérite pas de `RESEARCH_VAULT_PATH`.**
-  Le hook chargeait le registre via `iter_refs`, attrapait toute
-  exception en silence et concluait « registre vide » → tous les
-  wikilinks d'un SOTA légitime étaient flagués « absents ». Désormais,
-  les hooks chargent eux-mêmes `~/.config/paper-trail/env` au démarrage,
-  AVANT d'importer `pipeline.config`. Et si le registre reste
-  inaccessible, ils impriment un message clair et **désactivent**
-  proprement les checks I22/I23 au lieu de bloquer.
-- **Regex I21 acceptait `[[slug]]` mais pas `[[slug|texte affiché]]`.**
-  Le wikilink Obsidian avec alias (forme idiomatique pour afficher
-  « Auteur Année » au lecteur tout en pointant vers le slug) était
-  considéré comme manquant. Mêmes lignes flagées I21 alors qu'elles
-  contenaient bien une citation liée. Corrigé dans le hook
-  `pre_save_sota_check.py` et dans `pipeline/invariants.py` (I20, I21).
-- **Diagnostic explicite au lieu de blocage silencieux.** Les deux
-  hooks PreToolUse impriment maintenant un message clair sur stderr
-  quand le registre est inaccessible, en pointant vers la solution
-  (`~/.config/paper-trail/env`).
+- **False I22 positive when the hook does not inherit `RESEARCH_VAULT_PATH`.**
+  The hook loaded the registry through `iter_refs`, silently swallowed any
+  exception and concluded "empty registry" → every wikilink in a legitimate
+  SOTA was flagged as missing. Hooks now load
+  `~/.config/paper-trail/env` themselves at startup, BEFORE importing
+  `pipeline.config`. And if the registry stays unreachable, they print a
+  clear message and cleanly **disable** the I22/I23 checks instead of
+  blocking.
+- **The I21 regex accepted `[[slug]]` but not `[[slug|displayed text]]`.**
+  The aliased Obsidian wikilink — the idiomatic form for showing
+  "Author Year" to the reader while pointing at the slug — was treated as
+  missing, so lines that did carry a linked citation were flagged I21.
+  Fixed in the `pre_save_sota_check.py` hook and in `pipeline/invariants.py`
+  (I20, I21).
+- **Explicit diagnosis instead of silent blocking.** Both PreToolUse hooks
+  now print a clear message on stderr when the registry is unreachable,
+  pointing at the fix (`~/.config/paper-trail/env`).
 
 ## [0.3.11] — 2026-06-13
 
-Retour terrain v0.3.10 : 10 refs encore ratées, dont des accès libres
-qui auraient dû passer. Quatre correctifs supplémentaires sur le fetcher
-HTTP et la validation page 1.
+Field report on v0.3.10: 10 refs still missed, including open-access ones
+that should have gone through. Four further fixes to the HTTP fetcher and
+page 1 validation.
 
 ### Added
 
-- **Override DOI dans la validation page 1.** Si le DOI attendu apparaît
-  dans la page 1 (ou les 6 premières pages) du PDF téléchargé, le
-  validateur accepte directement — court-circuite les checks titre /
-  auteur / off-domain qui produisent des faux négatifs sur les thèses
-  multilingues (titre FR, corps EN — Rodriguez 2025, Cheveigné…) et
-  les publications avec auteur principal différent du registre.
+- **DOI override in page 1 validation.** If the expected DOI appears on
+  page 1 (or in the first 6 pages) of the downloaded PDF, the validator
+  accepts directly — short-circuiting the title / author / off-domain
+  checks that produce false negatives on multilingual theses (French
+  title, English body — Rodriguez 2025, Cheveigné…) and on publications
+  whose lead author differs from the registry's.
 
 ### Changed
 
-- **Fetcher HTTP basé sur `requests` avec UA browser-like.** Le `_http_get`
-  utilisait `urllib` avec un UA générique, bloqué par de nombreux
-  dépôts (UMass SchoolWorks, KIT, TU Darmstadt). Nouveau : `requests`
-  avec User-Agent Chrome 124, Accept-Language, redirects suivis,
-  cookies. Fallback `urllib` si `requests` indisponible (tests isolés).
-- **Retry UA `curl` sur HTML inattendu.** Certains serveurs (JCMS, HAL,
-  journaux scientifiques) servent un viewer JS aux navigateurs et le
-  PDF brut aux downloaders ligne-de-commande. Le pipeline retry
-  maintenant avec un UA minimaliste `curl/7.88.0` quand la première
-  réponse (browser UA) est HTML et que le résolveur landing→PDF n'a
-  rien trouvé. Vu sur JCMS, HAL theses, Springer link parfois.
+- **HTTP fetcher based on `requests` with a browser-like UA.** `_http_get`
+  used `urllib` with a generic UA, blocked by many repositories (UMass
+  SchoolWorks, KIT, TU Darmstadt). Now: `requests` with a Chrome 124
+  User-Agent, Accept-Language, redirects followed, cookies. Falls back to
+  `urllib` when `requests` is unavailable (isolated tests).
+- **`curl` UA retry on unexpected HTML.** Some servers (JCMS, HAL,
+  scientific journals) serve a JS viewer to browsers and the raw PDF to
+  command-line downloaders. The pipeline now retries with a minimal
+  `curl/7.88.0` UA when the first response (browser UA) is HTML and the
+  landing→PDF resolver found nothing. Seen on JCMS, HAL theses, and
+  Springer link at times.
 
 ### Fixed
 
-- **Compatible PDF JCMS / HAL theses / OJS galleys.** Combinaison du
-  retry curl UA + résolveur landing→PDF couvre maintenant Rodriguez
-  2025 (HAL EN-FR thesis), Vigliensoni 2022 (JCMS galley), et tout
-  serveur OJS / DSpace qui gate les navigateurs.
+- **Compatible with JCMS / HAL theses / OJS galleys.** The curl-UA retry
+  combined with the landing→PDF resolver now covers Rodriguez 2025 (HAL
+  EN-FR thesis), Vigliensoni 2022 (JCMS galley), and any OJS / DSpace
+  server that gates browsers.
 
 ## [0.3.10] — 2026-06-13
 
-Retour terrain : un agent rapportait 13/57 PDFs ratés alors que la
-plupart sont en accès libre. Diagnostic : la cascade ne suivait pas
-les landing pages HTML servies par les dépôts universitaires (HAL,
-KIT, Darmstadt, NIME, eScholarship…), et n'offrait pas de point
-d'entrée propre quand l'agent connaissait l'URL.
+Field report: an agent reported 13/57 PDFs missed when most were openly
+accessible. Diagnosis: the cascade did not follow the HTML landing pages
+served by university repositories (HAL, KIT, Darmstadt, NIME,
+eScholarship…), and offered no clean way in when the agent already knew
+the URL.
 
 ### Added
 
-- **Résolveur landing→PDF universel.** Quand une source de la cascade
-  reçoit du HTML au lieu d'un PDF, le pipeline parse maintenant
-  automatiquement la balise `<meta name="citation_pdf_url">` (norme
-  Highwire Press, supportée par la plupart des dépôts académiques),
-  `og:pdf` en repli, puis les liens `<a href="...pdf">` plausibles.
-  Suit le lien trouvé avec un en-tête `Referer` correct. Impact massif
-  sur HAL/KIT/Darmstadt/NIME/eScholarship — landing pages auparavant
-  comptées comme `no_source` deviennent maintenant des PDFs validés.
-- **Champ frontmatter `oa_url:`.** Permet d'injecter une URL OA connue
-  (page d'auteur, dépôt uni, NIME) quand la cascade automatique ne
-  trouve pas le bon PDF. Nouvelle source `manual_oa_url` placée en
-  TÊTE de cascade — essayée en premier, bénéficie du résolveur
-  landing→PDF.
-- **Commande `/paper-trail:inject-url <slug> <url>`.** Met `oa_url`
-  dans le frontmatter, débloque la ref si elle l'était, relance la
-  cascade ciblée. Évite à un agent de bricoler manuellement (téléchargement
-  hors pipeline, dépôt direct, perte de la métrique).
-- **Pistes actionnables sur cascade épuisée.** Quand la cascade
-  s'épuise, écrit `_hints/<slug>.md` à côté du registre listant les
-  deux points d'entrée propres : injecter `oa_url` ou poser le PDF
-  localement avec `pdf_path`. Le tableau « ce qui a été tenté » montre
-  exactement ce qui a échoué et pourquoi.
+- **Universal landing→PDF resolver.** When a cascade source receives HTML
+  instead of a PDF, the pipeline now parses the
+  `<meta name="citation_pdf_url">` tag (the Highwire Press convention,
+  supported by most academic repositories), falls back to `og:pdf`, then
+  to plausible `<a href="...pdf">` links. It follows the link it finds
+  with a correct `Referer` header. Massive impact on
+  HAL/KIT/Darmstadt/NIME/eScholarship — landing pages previously counted
+  as `no_source` now become validated PDFs.
+- **`oa_url:` frontmatter field.** Lets you inject a known OA URL (author
+  page, university repository, NIME) when the automatic cascade cannot
+  find the right PDF. A new `manual_oa_url` source sits at the HEAD of the
+  cascade — tried first, and benefits from the landing→PDF resolver.
+- **`/paper-trail:inject-url <slug> <url>` command.** Sets `oa_url` in the
+  frontmatter, unblocks the ref if it was blocked, and re-runs the
+  targeted cascade. Saves an agent from improvising by hand (downloading
+  outside the pipeline, dropping the file in directly, losing the metric).
+- **Actionable hints on cascade exhaustion.** When the cascade runs out,
+  it writes `_hints/<slug>.md` next to the registry listing the two clean
+  ways in: inject `oa_url`, or put the PDF locally with `pdf_path`. The
+  "what was tried" table shows exactly what failed and why.
 
 ### Changed
 
-- **HAL : fallback `/document`.** Si `fileMain_s` retourné par l'API
-  HAL renvoie du HTML, le pipeline réessaie sur l'URL canonique
-  `https://hal.science/<halId>/document` qui force la sortie PDF.
-  Couvre les cas où la première URL pointe vers un viewer.
+- **HAL: `/document` fallback.** If the `fileMain_s` returned by the HAL
+  API serves HTML, the pipeline retries the canonical URL
+  `https://hal.science/<halId>/document`, which forces PDF output. Covers
+  the cases where the first URL points at a viewer.
 
 ## [0.3.9] — 2026-06-13
 
-Retour terrain d'une session fraîche : friction d'installation et
-MCP `paper-search`. Sept améliorations UX pour un démarrage propre
-dans un nouveau projet.
+Field report from a fresh session: installation friction and the
+`paper-search` MCP. Seven UX improvements for a clean start in a new
+project.
 
 ### Added
 
-- **`pipeline preflight`.** Nouvelle sous-commande qui vérifie
-  l'environnement avant de lancer une session : vault path,
-  permissions, dépendances Python, présence du binaire `git`,
-  enregistrement du MCP `paper-search` dans Claude Code, variables
-  optionnelles. Tourne **sans** `RESEARCH_VAULT_PATH` (c'est
-  précisément ce qu'elle diagnostique). Sortie texte humain ou
-  `--json`. Chaque erreur/warning imprime la commande exacte pour
-  corriger.
-- **Config globale `~/.config/paper-trail/env`.** Chargée
-  automatiquement à l'import de `pipeline.config` (XDG-aware). Les
-  variables shell/projet gardent la priorité. Permet de définir une
-  fois `S2_API_KEY`, `RESEARCH_CONTACT_EMAIL`, `RESEARCH_VAULT_PATH`
-  et de les voir s'appliquer à tous les projets sans recopier dans
-  chaque `.env`.
+- **`pipeline preflight`.** A new subcommand that checks the environment
+  before starting a session: vault path, permissions, Python dependencies,
+  presence of the `git` binary, registration of the `paper-search` MCP in
+  Claude Code, optional variables. Runs **without** `RESEARCH_VAULT_PATH`
+  (that is precisely what it diagnoses). Human text or `--json` output.
+  Every error/warning prints the exact command to fix it.
+- **Global config at `~/.config/paper-trail/env`.** Loaded automatically
+  when `pipeline.config` is imported (XDG-aware). Shell/project variables
+  keep priority. Lets you set `S2_API_KEY`, `RESEARCH_CONTACT_EMAIL` and
+  `RESEARCH_VAULT_PATH` once and have them apply to every project without
+  copying them into each `.env`.
 
 ### Changed
 
-- **`INSTALL.md` réécrit.** Section explicite « Install the
-  `paper-search` MCP » avec la commande exacte (`uv venv` + git URL +
-  `claude mcp add`) et un avertissement contre PyPI obsolète (13 outils
-  au lieu de 63 sur git HEAD). Section troubleshooting (No executables,
-  ModuleNotFoundError pypdf, TypeError max_results, MCP non listé).
-  Section config globale `~/.config/paper-trail/env` pour secrets
-  réutilisables.
-- **`README.md`.** Tableau MCP refondu : paper-search marqué
-  **Required**, lien direct vers la recette d'install. Section Quick
-  start mise à jour avec la config globale et la commande de vérif
-  `pipeline preflight`.
-- **Skill `sota-writer`.** Étape pré-vol mandatoire avant phase A.
-  Signatures correctes documentées (`max_results_per_source`, pas
-  `max_results`) pour éviter le TypeError au premier appel.
-- **Commande `/paper-trail:new-sota`.** Étape 0 ajoutée : invoque
-  `pipeline preflight` avant de lancer le sota-writer ; halte +
-  recette si le MCP n'est pas enregistré.
-- **`ConfigError` plus utile.** Le message liste les trois options
-  (shell, `~/.config/paper-trail/env`, `.env` de projet) au lieu de la
-  seule variable shell.
+- **`INSTALL.md` rewritten.** An explicit "Install the `paper-search` MCP"
+  section with the exact command (`uv venv` + git URL + `claude mcp add`)
+  and a warning against the outdated PyPI build (13 tools instead of 63 on
+  git HEAD). A troubleshooting section (No executables,
+  ModuleNotFoundError pypdf, TypeError max_results, MCP not listed). A
+  section on the global `~/.config/paper-trail/env` config for reusable
+  secrets.
+- **`README.md`.** MCP table reworked: paper-search marked **Required**,
+  with a direct link to the install recipe. Quick start updated with the
+  global config and the `pipeline preflight` check command.
+- **`sota-writer` skill.** A mandatory preflight step before phase A.
+  Correct signatures documented (`max_results_per_source`, not
+  `max_results`) to avoid a TypeError on the first call.
+- **`/paper-trail:new-sota` command.** Step 0 added: invokes
+  `pipeline preflight` before starting sota-writer; halts with a recipe if
+  the MCP is not registered.
+- **A more useful `ConfigError`.** The message lists all three options
+  (shell, `~/.config/paper-trail/env`, project `.env`) instead of the
+  shell variable alone.
 
 ## [0.3.8] — 2026-06-06
 
-Retours terrain d'un projet tiers utilisant le plugin sur un layout flat
-non-Obsidian : six bugs corrigés (portabilité, robustesse cascade,
-validation page 1, UX).
+Field reports from a third-party project running the plugin on a flat,
+non-Obsidian layout: six bugs fixed (portability, cascade robustness,
+page 1 validation, UX).
 
 ### Fixed
 
-- **I21 + hook pre-save : compatibles layout flat.** La détection de
-  citation texte libre ne reconnaissait que les wikilinks Obsidian
-  `[[slug]]` et levait à tort sur les SOTAs flat (citations légitimes
-  au format `[texte](refs/slug.md)`). La regex accepte maintenant les
-  deux formes.
-- **`sota_sync` hors repo git.** `arbitrate` échouait à chaque appel
-  avec « git backup pre-flight failed » quand le vault n'était pas
-  versionné. Par défaut : skip propre avec WARN ; comportement strict
-  opt-in via `RESEARCH_REQUIRE_GIT=1`.
-- **`arbitrate reject-pdf` cohérent avec I5/I6.** La transition met la
-  fiche en `needs_reacquisition` après avoir effacé `pdf_path`/`pdf_sha256`,
-  mais ce state était dans `STATES_WITH_PDF` → I5/I6 levaient ensuite.
-  Retiré du set : ce state signifie « PDF inutilisable, en attente de
-  réacquisition », pas de PDF actif attendu.
-- **Page 1 anti-homonymie plus discriminante.** Cinq cas remontés
-  d'homonymes acceptés dans le même domaine (Dudley 1939 Vocoder vs
-  Morise 2016 WORLD, Schwarz 2007 vs Einbond 2016…). Seuil distinctif
-  adaptatif (1 hit pour 1-2 mots, 2 pour 3-4, 3 pour 5+) ; gate
-  secondaire 60 % au lieu de 50 % pour les titres ≥5 mots distinctifs.
-- **Couvertures de livre.** Roads *Microsound* rejeté car la page 1
-  est une couverture sans auteur ni keywords. Fallback : relire jusqu'à
-  6 pages avant de conclure à « author_not_in_page1 and no_domain_keywords ».
-- **CORE `AttributeError`.** `r.get("fullText", {}).get("url")` cassait
-  quand l'API renvoyait `fullText: null`. Remplacé par `r.get("fullText") or {}`.
-- **Anna's Archive `md5_found_but_no_dl`.** Cascade DL étoffée :
-  pattern d'extraction étendu (`get/?…` en plus de `get.php?…`),
-  diagnostic granulaire (`dl_unreachable` vs `dl_validation_failed`),
-  fallback `annas-archive.org/md5/<md5>` avant `library.lol`.
+- **I21 + the pre-save hook: flat-layout compatible.** Free-text citation
+  detection recognised only Obsidian `[[slug]]` wikilinks and raised
+  wrongly on flat SOTAs (legitimate citations in `[text](refs/slug.md)`
+  form). The regex now accepts both.
+- **`sota_sync` outside a git repo.** `arbitrate` failed on every call with
+  "git backup pre-flight failed" when the vault was not versioned.
+  Default: a clean skip with a WARN; strict behaviour is opt-in through
+  `RESEARCH_REQUIRE_GIT=1`.
+- **`arbitrate reject-pdf` made consistent with I5/I6.** The transition
+  moves the record to `needs_reacquisition` after clearing
+  `pdf_path`/`pdf_sha256`, but that state was in `STATES_WITH_PDF` → I5/I6
+  then raised. Removed from the set: the state means "PDF unusable,
+  awaiting re-acquisition", so no active PDF is expected.
+- **Sharper page 1 anti-homonymy.** Five reported cases of homonyms
+  accepted within the same domain (Dudley 1939 Vocoder vs Morise 2016
+  WORLD, Schwarz 2007 vs Einbond 2016…). Adaptive distinctive threshold
+  (1 hit for 1-2 words, 2 for 3-4, 3 for 5+); secondary gate at 60 %
+  instead of 50 % for titles with ≥5 distinctive words.
+- **Book covers.** Roads' *Microsound* was rejected because page 1 is a
+  cover with neither author nor keywords. Fallback: read up to 6 pages
+  before concluding "author_not_in_page1 and no_domain_keywords".
+- **CORE `AttributeError`.** `r.get("fullText", {}).get("url")` broke when
+  the API returned `fullText: null`. Replaced with
+  `r.get("fullText") or {}`.
+- **Anna's Archive `md5_found_but_no_dl`.** Download cascade fleshed out:
+  extraction pattern extended (`get/?…` in addition to `get.php?…`),
+  granular diagnosis (`dl_unreachable` vs `dl_validation_failed`),
+  `annas-archive.org/md5/<md5>` fallback before `library.lol`.
 
 ### Changed
 
-- **`pipeline run` (mode mono-passe)** suggère explicitement
-  `pipeline run --loop` quand au moins une transition a été effectuée,
-  pour éviter d'avoir à relancer pour enchaîner les étapes suivantes
-  (uid_resolved → pdf_acquired → page1_validated).
+- **`pipeline run` (single-pass mode)** now explicitly suggests
+  `pipeline run --loop` when at least one transition was made, saving a
+  manual re-run to chain the following steps (uid_resolved → pdf_acquired
+  → page1_validated).
 
 ### Added
 
-- **`INSTALL.md`** : section listant les MCPs optionnels
-  (paper-search, NotebookLM, RTFM) et clarifiant que le plugin
-  fonctionne sans, via le fallback REST déjà actif.
+- **`INSTALL.md`**: a section listing the optional MCPs (paper-search,
+  NotebookLM, RTFM) and clarifying that the plugin works without them,
+  through the REST fallback that is already active.
 
 ## [0.3.7] — 2026-06-06
 
-Sécurité + portabilité : suppression de tout chemin hardcodé et de la
-clé API leakée dans le code. Le plugin est désormais utilisable sur
-n'importe quelle machine après configuration des variables
-d'environnement.
+Security + portability: every hardcoded path and the API key leaked in the
+source removed. The plugin is now usable on any machine once the
+environment variables are configured.
 
 ### Security
 
-- **Clé Semantic Scholar retirée du code source.** `lib/s2_resolver.py`
-  exposait une clé en clair (commit public). Désormais lue depuis
-  `S2_API_KEY` (env var). **La clé précédente doit être révoquée côté
-  Semantic Scholar.**
+- **Semantic Scholar key removed from the source.** `lib/s2_resolver.py`
+  exposed a key in clear text (public commit). It is now read from
+  `S2_API_KEY` (env var). **The previous key must be revoked on the
+  Semantic Scholar side.**
 
-### Changed (breaking pour les installations existantes)
+### Changed (breaking for existing installations)
 
-- **`pipeline/config.py`** : suppression de `_DEFAULT_VAULT` (le chemin
-  `/mnt/d/Obsidian/Articles/Projets/Ontologie musicale`). Si
-  `RESEARCH_VAULT_PATH` n'est pas défini, le plugin lève `ConfigError`
-  avec un message d'aide explicite au lieu de retomber silencieusement
-  sur un chemin tiers.
-- **`lib/s2_resolver.py`** : `STATUS_JSON`, `MD_PATH`, `OBSIDIAN_ROOT`
-  dérivés du vault configuré au lieu d'être hardcodés. `EMAIL`
-  paramétrable via `RESEARCH_CONTACT_EMAIL`.
-- **`PROJECT_AUTHORS`** : whitelist musicology-spécifique externalisée
-  vers `~/.config/paper-trail/project_authors.txt` (vide par défaut).
-- **`RTFM_DB`** : devient optionnel (env var `RESEARCH_RTFM_DB`). Les
-  modules consommateurs (`rtfm_failures`, `ingest`) ignorent
-  proprement son absence.
-- **`pipeline/tests/test_f1_negative.py`** : test rendu portable
-  (skip si la ref de référence n'existe pas, override possible via
+- **`pipeline/config.py`**: `_DEFAULT_VAULT` removed (the
+  `/mnt/d/Obsidian/Articles/Projets/Ontologie musicale` path). If
+  `RESEARCH_VAULT_PATH` is not set, the plugin raises `ConfigError` with an
+  explicit help message instead of silently falling back to somebody
+  else's path.
+- **`lib/s2_resolver.py`**: `STATUS_JSON`, `MD_PATH` and `OBSIDIAN_ROOT`
+  derived from the configured vault instead of being hardcoded. `EMAIL`
+  configurable through `RESEARCH_CONTACT_EMAIL`.
+- **`PROJECT_AUTHORS`**: the musicology-specific whitelist moved out to
+  `~/.config/paper-trail/project_authors.txt` (empty by default).
+- **`RTFM_DB`**: becomes optional (`RESEARCH_RTFM_DB` env var). The
+  consuming modules (`rtfm_failures`, `ingest`) handle its absence
+  cleanly.
+- **`pipeline/tests/test_f1_negative.py`**: test made portable (skips when
+  the reference ref does not exist, overridable through
   `RESEARCH_F1_NEGATIVE_REF`).
 
 ### Added
 
-- **`conftest.py`** à la racine — fournit un défaut neutre
-  (`/tmp/paper-trail-test-vault`) pour `RESEARCH_VAULT_PATH` pendant
-  pytest, sans contaminer un vault réel.
-- **`INSTALL.md`** — documentation complète des variables
-  d'environnement, du fichier de whitelist optionnel et de la
-  procédure de vérification.
+- **`conftest.py`** at the root — provides a neutral default
+  (`/tmp/paper-trail-test-vault`) for `RESEARCH_VAULT_PATH` during pytest,
+  without contaminating a real vault.
+- **`INSTALL.md`** — full documentation of the environment variables, the
+  optional whitelist file, and the verification procedure.
 
 ## [0.2.0] — 2026-05-28
 
-Major rework of the INGEST pipeline : split into 4 orthogonal passes
+Major rework of the INGEST pipeline: split into 4 orthogonal passes
 (identify / purge / acquire / linkify) + chronic SOTA ↔ registry
 coherence guarantee. Breaking semantic change in the `citation-parser`
 sub-agent contract.
@@ -377,39 +384,39 @@ sub-agent contract.
   `cmd_resolve_textbooks merge_into` mutated the registry without
   updating the wikilinks in SOTAs.
 
-- **Automatic sync hook** : `cmd_arbitrate decision=retract`,
+- **Automatic sync hook**: `cmd_arbitrate decision=retract`,
   `cmd_resolve_textbooks action=merge_into`, and
   `cmd_retract_uncited --apply` now trigger `update_wikilinks_in_sotas`
   automatically. Invariants I22/I23 become self-healing for future
   mutations.
 
-- **Test suites** : `pipeline/tests/test_sota_sync.py` (9/9 unit),
+- **Test suites**: `pipeline/tests/test_sota_sync.py` (9/9 unit),
   `pipeline/tests/test_p2_sync_branchements.py` (2/2 integration).
 
 ### Changed
 
-- **`agents/citation-parser.md` v2** (breaking semantic) :
-  - Rule 10 (NEW) : `raw` must be a strict literal substring of
+- **`agents/citation-parser.md` v2** (breaking semantic):
+  - Rule 10 (NEW): `raw` must be a strict literal substring of
     `input_text`. Enrichment of `year`/`title` from context is OK
     but `raw` stays the local short mention.
-  - Rule 11 (NEW) : multiple mentions of the same work produce
+  - Rule 11 (NEW): multiple mentions of the same work produce
     multiple records, NOT one. Replaces the old destructive dedup
     rule 3.last ("return ONE record with the most complete mention").
-  - Consequence : table cells like `| Younger 1967 |` now produce a
+  - Consequence: table cells like `| Younger 1967 |` now produce a
     record with `raw="Younger 1967"` (instead of being absorbed by the
     full citation), enabling wikilink substitution in tables.
 
-- **`pipeline/ingest.py::ingest_citations`** : added validation that
+- **`pipeline/ingest.py::ingest_citations`**: added validation that
   `cit.raw` is a literal substring of the SOTA text. Mismatch is logged
   in `IngestResult.errors` (not blocking — Tier 2 anchoring still
   catches via fuzzy match).
 
-### Plan refonte INGEST — phases restantes
+### INGEST rework plan — remaining phases
 
 See `plans/compressed-painting-squid.md` for details.
 
-- P4 — `pipeline/purge.py` + `/paper-trail:purge` (cleanup wikilinks
-  invalides : retracted, `_0000_*` orphans, ugly suffixes `_2_3_4`,
+- P4 — `pipeline/purge.py` + `/paper-trail:purge` (clean up invalid
+  wikilinks: retracted, `_0000_*` orphans, ugly suffixes `_2_3_4`,
   technical paths `20_ATLAS/`, `.canvas`).
 - P5 — `pipeline/identify.py` + `pipeline/linkify.py` + idempotent
   `## Statut des sources` section at the bottom of each SOTA.
@@ -420,9 +427,9 @@ See `plans/compressed-painting-squid.md` for details.
 ## [0.1.0] — 2026-05-25
 
 First release. Anti-hallucination Claude Code plugin for academic
-research. Research-first workflow, strict state machine, 10-source
-acquisition cascade, page 1 anti-homonymy validation, per-citation
-audit.
+research. Research-first workflow, strict state machine, 8-source
+acquisition cascade (10 with the opt-in shadow libraries), page 1
+anti-homonymy validation, per-citation audit.
 
 ### Added
 
@@ -525,4 +532,4 @@ See `NOTICE.md` for full attribution.
 
 ---
 
-[0.1.0]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.1.0
+[0.3.14]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.3.14
