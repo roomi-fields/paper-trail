@@ -65,7 +65,7 @@ réel ; l'inverse est plus dur.
 ## 4. Structure du repo cible
 
 ```
-references-consolidation/                    ← repo actuel (rename possible §11)
+paper-trail/                                 ← repo actuel
 │
 ├── LICENSE                                  # MIT (à créer)
 ├── NOTICE.md                                # NOUVEAU — attributions

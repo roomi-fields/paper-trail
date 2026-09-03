@@ -1,7 +1,7 @@
 # Worker B — Design d'architecture robuste (plan-design.md)
 
 > **Plan d'action de cette session** : créer le fichier `./plans/plan-design.md`
-> dans le repo `references-consolidation` avec exactement le contenu ci-dessous
+> dans le repo `paper-trail` avec exactement le contenu ci-dessous
 > (sections 1 à 11). Aucune autre modification de code dans cette session.
 > Le design est exécutable en couches indépendantes (cf. §8) ; chaque couche
 > sera implémentée dans une session ultérieure dédiée.
@@ -10,7 +10,7 @@
 
 ## Contexte
 
-Le worker B (`pipeline/` dans `references-consolidation`) acquiert et valide
+Le worker B (`pipeline/` dans `paper-trail`) acquiert et valide
 les 909 références bibliographiques du registre `_registry/refs/*.md` via une
 FSM 8 états + cascade 10 niveaux. Au 2026-05-24 les fix F1-F4 + P5
 sont E2E validés (cf. `coverage_run_2026-05-24.md`).
@@ -679,6 +679,6 @@ python -m pipeline lint                      # R1-R10 sortent exit 0 ou rapport
 ## Fichier final
 
 Une fois ce plan approuvé, j'écris ce contenu **intégralement** dans
-`./plans/plan-design.md` du repo `references-consolidation`. Aucune autre
+`./plans/plan-design.md` du repo `paper-trail`. Aucune autre
 modification (pas de code, pas de tests) — l'implémentation se fera en
 sessions dédiées par couche, chacune avec son propre plan focalisé.

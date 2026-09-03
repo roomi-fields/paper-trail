@@ -11,7 +11,7 @@ Détail :
 - Sortie du with : `flock(LOCK_UN)`, suppression du fichier, close du fd.
 - WSL2 drvfs : `fcntl.flock` fonctionne historiquement sur /mnt/d/. Si jamais
   un OSError EINVAL/ENOTSUP émerge, on prévoit un fallback maison (le user
-  passe `lock_path=...` pointant `~/.cache/references-consolidation/`).
+  passe `lock_path=...` pointant `~/.cache/paper-trail/`).
 
 Usage :
     from pipeline.lock import WorkerLock, LockBusyError

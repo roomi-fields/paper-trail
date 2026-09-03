@@ -147,7 +147,7 @@ CASCADE += [("websearch", try_websearch)]
 - `pipeline run --dry-run` sans var → plan saute `scihub` et
   `annas_archive`, va à `websearch`
 - `pipeline status` + `pipeline doctor` + tests E2E : exit 0
-- `/plugin install file:///home/romi/dev/mcp/references-consolidation`
+- `/plugin install file:///home/romi/dev/mcp/paper-trail`
   installe sans erreur
 
 **Risques** :
