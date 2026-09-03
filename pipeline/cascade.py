@@ -258,10 +258,10 @@ def _make_dest_path(ref: Ref) -> Path:
             domain = "11_Biblio_MIR"
     author = (ref.frontmatter.get("author") or "Unknown").split()[0].capitalize()
     year = ref.frontmatter.get("year") or "nd"
-    title = (ref.frontmatter.get("title") or "untitled")[:50]
-    # sanitize
-    import re
-    title = re.sub(r"[^\w\s-]", "", title).strip().replace(" ", "_")[:50] or "untitled"
+    # Un titre Crossref peut porter des balises et des sauts de ligne : la
+    # classe des blancs les laissait passer dans le nom de fichier.
+    from metadata_clean import safe_filename_fragment
+    title = safe_filename_fragment(ref.frontmatter.get("title"))
     fname = f"{author}_{year}_{title}.pdf"
     return SOURCES / domain / "Sources" / fname
 

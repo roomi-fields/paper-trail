@@ -1,6 +1,7 @@
 """Chargement / mutation atomique des fichiers refs du registry."""
 from __future__ import annotations
 import os
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -60,27 +61,46 @@ def parse_frontmatter_md(text: str) -> tuple[dict | None, str]:
 
     Retourne (frontmatter_dict, body) ou (None, text) si parse impossible.
     """
+    fm, _err, body = parse_frontmatter_md_verbose(text)
+    return fm, body
+
+
+def parse_frontmatter_md_verbose(text: str) -> tuple[dict | None, str, str]:
+    """Comme `parse_frontmatter_md`, mais rend aussi la raison de l'échec.
+
+    Retourne (frontmatter, raison_ou_chaîne_vide, body). Une fiche illisible
+    disparaissait sans bruit des passages : la raison permet de la nommer.
+    """
     if not text.startswith("---"):
-        return None, text
+        return None, "no frontmatter delimiter", text
     parts = text.split("---", 2)
     if len(parts) < 3:
-        return None, text
+        return None, "unterminated frontmatter block", text
     try:
-        return yaml.safe_load(parts[1]) or {}, parts[2]
-    except yaml.YAMLError:
-        return None, text
+        return yaml.safe_load(parts[1]) or {}, "", parts[2]
+    except yaml.YAMLError as e:
+        detail = " ".join(str(e).split())
+        return None, f"invalid YAML: {detail[:200]}", text
 
 
 def load_ref(path: Path) -> Ref | None:
     """Charge une ref depuis son fichier .md. Renvoie None si parse échoue."""
+    ref, _why = load_ref_verbose(path)
+    return ref
+
+
+def load_ref_verbose(path: Path) -> tuple[Ref | None, str]:
+    """Charge une ref et rend la raison de l'échec plutôt que `None` seul."""
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    fm, body = parse_frontmatter_md(text)
+    except OSError as e:
+        return None, f"unreadable file: {e.strerror or e}"
+    fm, why, body = parse_frontmatter_md_verbose(text)
     if fm is None:
-        return None
-    return Ref(slug=path.stem, path=path, frontmatter=fm, body=body)
+        return None, why
+    if not isinstance(fm, dict):
+        return None, f"frontmatter is {type(fm).__name__}, expected a mapping"
+    return Ref(slug=path.stem, path=path, frontmatter=fm, body=body), ""
 
 
 def iter_refs(refs_dir: Path | None = None):
@@ -94,9 +114,14 @@ def iter_refs(refs_dir: Path | None = None):
         from .config import REFS as _REFS
         refs_dir = _REFS
     for p in sorted(refs_dir.glob("*.md")):
-        ref = load_ref(p)
+        ref, why = load_ref_verbose(p)
         if ref is not None:
             yield ref
+        else:
+            # Une fiche illisible était sautée sans un mot : la référence
+            # disparaissait des passages sans que personne ne s'en aperçoive.
+            print(f"[registry] SKIPPED unreadable ref {p.stem} — {why}",
+                  file=sys.stderr)
 
 
 def save_ref(ref: Ref) -> None:

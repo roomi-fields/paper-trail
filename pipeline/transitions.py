@@ -218,12 +218,13 @@ def candidate_to_uid_resolved(ref: Ref) -> TransitionResult:
             ref.frontmatter["uid"] = uid
             ref.frontmatter["uid_source"] = "crossref.title_match_strict"
             # Enrichir si Crossref donne mieux
-            cand_title = (it.get("title") or [""])[0]
+            from metadata_clean import clean_metadata_text
+            cand_title = clean_metadata_text((it.get("title") or [""])[0])
             if cand_title and len(cand_title) > len(title):
                 ref.frontmatter["title"] = cand_title
             venue = it.get("container-title") or [""]
             if venue and venue[0] and not fm.get("venue"):
-                ref.frontmatter["venue"] = venue[0]
+                ref.frontmatter["venue"] = clean_metadata_text(venue[0])
             append_state_history(ref, "uid_resolved", by="worker_b_f1",
                                  meta={"uid_source": "crossref.title_match_strict",
                                        "title_match": round(sim, 3),

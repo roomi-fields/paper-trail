@@ -27,7 +27,8 @@ from pathlib import Path
 from typing import Optional
 
 from .config import REFS, VAULT
-from .registry import load_ref, iter_refs
+from .registry import (RegistryWriteCorrupted, iter_refs, load_ref,
+                       parse_frontmatter_md_verbose)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -679,12 +680,12 @@ title: {title}
 {uid_line}{pdf_line}\
 created_by: ingest
 created_at: '{created_at}'
-ingest_source: {sota_relpath}
+ingest_source: {sota_relpath_q}
 state_history:
 - at: '{created_at}'
   by: ingest
   meta:
-    sota: {sota_relpath}
+    sota: {sota_relpath_q}
     confidence: {confidence}
 {pdf_history_line}\
   state: {state}
@@ -923,12 +924,12 @@ def _create_ref(
             try:
                 sha = hashlib.sha256(orphan.read_bytes()).hexdigest()
                 pdf_line = (
-                    f"pdf_path: {rel_pdf}\n"
+                    f"pdf_path: {_yaml_quote(rel_pdf)}\n"
                     f"pdf_sha256: '{sha}'\n"
                     f"pdf_origin: orphan_match_at_ingest\n"
                 )
                 pdf_history_line = (
-                    f"    pdf_path: {rel_pdf}\n"
+                    f"    pdf_path: {_yaml_quote(rel_pdf)}\n"
                     f"    pdf_origin: orphan_match\n"
                     f"    page1_validation: ok\n"
                 )
@@ -954,10 +955,22 @@ def _create_ref(
         pdf_history_line=pdf_history_line,
         created_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         sota_relpath=sota_relpath,
+        sota_relpath_q=_yaml_quote(sota_relpath),
         confidence=citation.confidence,
         raw=citation.raw.replace("\n", " ").strip()[:300],
     )
     REFS.mkdir(parents=True, exist_ok=True)
+    # Cette écriture est la seule du registre à ne pas passer par `save_ref`
+    # (elle produit le fichier initial depuis un gabarit, pas depuis un objet).
+    # Elle doit donc refaire son contrôle : une fiche au YAML invalide est
+    # ensuite sautée à chaque passage, et la référence disparaît des
+    # acquisitions sans que personne ne s'en aperçoive.
+    fm, why, _ = parse_frontmatter_md_verbose(content)
+    if fm is None:
+        raise RegistryWriteCorrupted(
+            REFS / f"{slug}.md",
+            f"refusing to write: the generated frontmatter does not parse "
+            f"({why}). author={citation.author!r} title={citation.title!r}")
     (REFS / f"{slug}.md").write_text(content, encoding="utf-8")
     return slug
 
