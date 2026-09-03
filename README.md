@@ -29,11 +29,16 @@ against the actual source text.
 - **Anti-homonymy guard** — page 1 of each downloaded PDF is matched
   against expected author, title, and domain keywords before
   acceptance
-- **8-source acquisition cascade** (up to 11 with the opt-in extended
-  sources) — Crossref OA, arXiv, OpenAlex,
-  Unpaywall, HAL, CORE, archive.org, WebSearch queue (plus optional
-  extended sources, disabled by default and **strict opt-in** only —
-  see [`DISCLAIMER.md`](DISCLAIMER.md))
+- **10-source acquisition cascade** — a supplied URL, Crossref OA, arXiv,
+  OpenAlex, Unpaywall, HAL, CORE, the publisher's own page followed from
+  the DOI, archive.org, and a WebSearch queue as a last resort
+- **Browser routes** (up to 13 sources) — several publishers refuse every
+  programmatic client and serve an ordinary browser without difficulty. With
+  Playwright and a display, the plugin opens the article itself, and can
+  reach author-deposited full texts on ResearchGate using your own session
+  cookies. See [`docs/ACQUISITION_HEADFUL.md`](docs/ACQUISITION_HEADFUL.md)
+- **Extended sources** (up to 17) — disabled by default and **strict opt-in**
+  only, see [`DISCLAIMER.md`](DISCLAIMER.md)
 - **19 mechanical invariants** — automated registry health check with
   safe auto-fix for cosmetic drift
 - **Inverted writing workflow** — researches and reads first, writes
@@ -240,6 +245,10 @@ for the worker engine internals.
 | `S2_API_KEY` | unset | Optional Semantic Scholar API key (stricter rate limit without) |
 | `RESEARCH_ENABLE_SHADOW_LIBS` | unset | Enable Anna's Archive & Sci-Hub (opt-in, see DISCLAIMER) |
 | `RESEARCH_ANNAS_HEADFUL_BUDGET_S` | `600` | Per-reference time budget for the browser route, in seconds |
+| `RESEARCH_BROWSER_COOKIES` | unset | Your own session cookies, exported to a JSON file — enables the ResearchGate route |
+| `RESEARCH_BROWSER_PROFILE` | `~/.cache/paper-trail/browser-profile` | Where the shared browser keeps its profile |
+| `RESEARCH_LIBGEN_MIRRORS` | built-in list | Comma-separated Library Genesis mirrors to try |
+| `RESEARCH_MIN_BOOK_PAGES` | `30` | Page floor below which a file is not the book it claims to be |
 | `RESEARCH_ENABLE_NOTEBOOKLM` | unset | Enable NotebookLM in `sota-writer` phase A |
 | `RESEARCH_SKIP_END_DOCTOR` | unset | Skip the SessionEnd consistency check |
 

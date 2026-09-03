@@ -2,6 +2,7 @@
 from __future__ import annotations
 import argparse
 import json
+import contextlib
 import sys
 from collections import Counter
 
@@ -131,10 +132,16 @@ def _run_one_pass(args: argparse.Namespace) -> dict:
     n_skip = 0
     n_pending = 0
 
+    # Une passe entière rejoue les échecs déjà connus de toutes les fiches en
+    # attente : acquérir cinq nouvelles références coûtait un quart d'heure.
+    # `--ref` accepte donc une liste, pas seulement une fiche.
+    wanted_slugs = {s.strip() for s in (getattr(args, "ref", "") or "").split(",")
+                    if s.strip()}
+
     for ref in sorted(iter_refs(), key=lambda r: STATE_ORDER.get(r.state, 50)):
         if args.state and ref.state != args.state:
             continue
-        if args.ref and ref.slug != args.ref:
+        if wanted_slugs and ref.slug not in wanted_slugs:
             continue
         if args.cited_in:
             consumers = {c.get("name") for c in ref.cited_in}
@@ -1347,7 +1354,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     prn = sub.add_parser("run", help="Push active refs to their next state")
     prn.add_argument("--state", help="Filter: process one state only")
-    prn.add_argument("--ref", help="Filter: process one ref only (by slug)")
+    prn.add_argument("--ref", metavar="SLUG[,SLUG...]",
+                     help="Filter: process only these refs (comma-separated "
+                          "slugs). Use it to acquire a few new references "
+                          "without replaying every known failure.")
     prn.add_argument("--cited-in", action="append", default=[],
                      help="OR filter: refs cited by this SOTA/paper (repeatable)")
     prn.add_argument("--limit", type=int, default=0,
@@ -1528,6 +1538,12 @@ _MUTATING_CMDS = {"run", "reactivate-ocr", "purge", "linkify", "acquire"}
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Une passe dure des minutes. Quand la sortie est redirigée — travail
+    # planifié, journal — Python tamponne par blocs et rien ne s'affiche
+    # avant la fin : impossible de savoir si l'outil travaille ou s'il est
+    # bloqué. On repasse en tampon par ligne.
+    with contextlib.suppress(AttributeError, ValueError):
+        sys.stdout.reconfigure(line_buffering=True)
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.cmd in _MUTATING_CMDS:

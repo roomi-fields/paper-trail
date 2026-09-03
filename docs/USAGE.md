@@ -250,6 +250,15 @@ Because slots are rationed, one reference can take up to
 `RESEARCH_ANNAS_HEADFUL_BUDGET_S` (600 s by default) before the source
 gives up and the reference is retried later.
 
+### Targeting a few references
+
+A full pass walks every waiting reference and replays each known failure.
+When you only want the three you just added, name them:
+
+```bash
+python -m pipeline run --ref smith_2019_beat,doe_2021_entrainment
+```
+
 See [`ACQUISITION_HEADFUL.md`](ACQUISITION_HEADFUL.md) for the container
 recipe, the scheduled-job command and the things to watch for.
 

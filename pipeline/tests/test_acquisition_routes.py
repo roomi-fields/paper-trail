@@ -278,3 +278,47 @@ def test_researchgate_present_avec_temoins(monkeypatch, tmp_path):
     noms = _noms_cascade(monkeypatch, tmp_path, DISPLAY=":99",
                          RESEARCH_BROWSER_COOKIES=str(f))
     assert "researchgate" in noms
+
+
+# ─── Cibler quelques fiches plutôt que toutes ───────────────────────────────
+
+def test_plusieurs_fiches_ciblees():
+    """Une passe entière rejoue les échecs connus de toutes les fiches en
+    attente. Acquérir quelques nouvelles références doit pouvoir se demander."""
+    from pipeline.cli import build_parser
+    args = build_parser().parse_args(["run", "--ref", "a_2020_x,b_1999_y"])
+    vises = {s.strip() for s in (args.ref or "").split(",") if s.strip()}
+    assert vises == {"a_2020_x", "b_1999_y"}
+
+
+def test_une_seule_fiche_reste_acceptee():
+    from pipeline.cli import build_parser
+    args = build_parser().parse_args(["run", "--ref", "a_2020_x"])
+    assert {s.strip() for s in args.ref.split(",") if s.strip()} == {"a_2020_x"}
+
+
+def test_sortie_non_tamponnee(monkeypatch, tmp_path):
+    """Sur un quart d'heure de travail, on doit voir la passe avancer.
+
+    Quand la sortie est redirigée — travail planifié, journal — Python tamponne
+    par blocs : rien ne s'affiche avant la fin, et on ne sait pas si l'outil
+    travaille ou s'il est bloqué.
+    """
+    import pipeline.cli as cli
+
+    class _Sortie:
+        line_buffering = False
+        def reconfigure(self, **kw):
+            self.line_buffering = kw.get("line_buffering", self.line_buffering)
+        def write(self, *a):
+            return 0
+        def flush(self):
+            pass
+
+    sortie = _Sortie()
+    monkeypatch.setattr(cli.sys, "stdout", sortie)
+    monkeypatch.setenv("RESEARCH_VAULT_PATH", str(tmp_path))
+    (tmp_path / "_registry" / "refs").mkdir(parents=True, exist_ok=True)
+    with pytest.raises(SystemExit):
+        cli.main(["--help"])
+    assert sortie.line_buffering is True

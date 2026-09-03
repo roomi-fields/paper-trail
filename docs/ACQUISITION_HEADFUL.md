@@ -62,6 +62,48 @@ without stepping on each other.
 `--retry-exhausted` (see below) is deliberately absent from this command:
 it is a one-off gesture, not a scheduling setting.
 
+## What the browser route covers
+
+With Playwright and a display available, four sources join the cascade. Only
+the last two are extended sources gated behind `RESEARCH_ENABLE_SHADOW_LIBS`.
+
+| Source | What it does | Needs |
+|---|---|---|
+| `publisher_headful` | Opens the article at its DOI and takes the full text | a display |
+| `researchgate` | Author-deposited full texts | your session cookies |
+| `annas_scidb_optin` | Anna's article reader — no rationed queue | opt-in |
+| `annas_headful_optin` | Anna's slot queue — slowest, rationed | opt-in |
+
+All four share **one browser window** for the whole pass. The profile is
+persistent, so a cleared anti-bot challenge and any session cookies survive
+from one reference to the next. Set `RESEARCH_BROWSER_PROFILE` to move it.
+
+Two details decide whether anything is downloaded at all. The browser must be
+**visible** — some file servers answer 502 to an invisible one — and its
+profile must be told to **save PDFs instead of displaying them**, otherwise
+Chromium opens its built-in viewer and no download ever starts. The plugin
+sets both; you only need the virtual display.
+
+### ResearchGate: supplying your session
+
+ResearchGate serves author-deposited full texts only to a signed-in session,
+and it checks the client's signature as well as the cookies — replaying them
+from a script does not work, which is why this route goes through the browser.
+
+Export the cookies from your own browser to a JSON file (a list of
+`{name, value, domain}` objects, as any cookie-export extension produces) and
+name it:
+
+```bash
+export RESEARCH_BROWSER_COOKIES="$HOME/.config/paper-trail/rg-cookies.json"
+```
+
+Without it the source declares itself unavailable and the cascade carries on.
+The site throttles insistent visitors: the plugin keeps at least 25 seconds
+between two searches (`RESEARCH_RG_SEARCH_GAP_S`) and, when the challenge
+closes, returns the reference as a *transient* failure so it is retried later
+rather than locked.
+
 ## Things to watch for in a container
 
 - **`--no-sandbox`** is already passed by the source (required for Chromium

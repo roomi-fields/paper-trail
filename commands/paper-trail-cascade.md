@@ -35,7 +35,7 @@ strict acquisition cascade.
 
 ## Shadow libraries
 
-By default, the cascade has 8 sources (no Sci-Hub, no Anna's Archive).
+By default, the cascade has 10 sources (no Sci-Hub, no Anna's Archive).
 To enable shadow libs for this session (cf. `DISCLAIMER.md`) :
 
 ```bash
@@ -43,7 +43,7 @@ export RESEARCH_ENABLE_SHADOW_LIBS=1
 /paper-trail:cascade --state candidate --limit 10
 ```
 
-The cascade then has 10 sources — 11 if the browser route is available
+The cascade then has 15 sources — 17 with the browser routes available
 as well (Playwright + a display, see `docs/ACQUISITION_HEADFUL.md`).
 A disclaimer prints to stderr at the first cascade load of the session.
 

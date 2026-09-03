@@ -187,7 +187,7 @@ candidate → uid_resolved → pdf_acquired → page1_validated → sota_cited_c
 * → retracted (terminal, fabrication confirmed)
 ```
 
-## 4. Acquisition cascade (10 sources)
+## 4. Acquisition cascade (10 sources, up to 17)
 
 ```
 1. Crossref OA       — DOI-based, OA metadata

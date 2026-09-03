@@ -1,5 +1,5 @@
 ---
-description: "Troisième passe du pipeline cible refondu. Lance la cascade PDF (8 sources : Crossref OA + arXiv + OpenAlex + Unpaywall + HAL + CORE + archive.org + WebSearch ; jusqu'à 11 avec les sources étendues opt-in) ciblée sur les refs d'un SOTA donné. Différent de `pipeline run` qui itère sur TOUTES les refs actives — `acquire` ne traite que les refs citées par le SOTA en cours."
+description: "Troisième passe du pipeline cible refondu. Lance la cascade PDF (10 sources : Crossref OA + arXiv + OpenAlex + Unpaywall + HAL + CORE + éditeur par DOI + archive.org + WebSearch ; jusqu'à 17 avec les voies par navigateur et les sources étendues opt-in) ciblée sur les refs d'un SOTA donné. Différent de `pipeline run` qui itère sur TOUTES les refs actives — `acquire` ne traite que les refs citées par le SOTA en cours."
 ---
 
 # `/paper-trail:acquire <SOTA-path>` — Cascade ciblée
