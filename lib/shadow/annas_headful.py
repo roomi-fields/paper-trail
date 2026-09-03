@@ -46,6 +46,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import quote
 
+from ..browser_session import BrowserUnavailable
+from ..browser_session import available as browser_available
+from ..browser_session import get_page
+
 from .mirrors import get_aa_mirrors
 
 if TYPE_CHECKING:  # `Ref` ne sert qu'aux annotations : l'importer vraiment
@@ -113,49 +117,9 @@ def _wall_clock_guard(seconds: float):
         signal.signal(signal.SIGALRM, previous)
 
 
-@contextlib.contextmanager
-def _address_space_unbounded():
-    """Lève le temps du lancement la borne d'espace d'adressage du process.
-
-    `pipeline run` se borne à 1,5 Go pour ne pas figer la machine, et les
-    rlimits sont héritées par les processus fils. Chromium réserve des
-    dizaines de Go d'adressage virtuel : sous cette borne il meurt au
-    démarrage. On remonte la limite douce au niveau de la limite dure le
-    temps du lancement, puis on la remet.
-
-    L'ordre d'imbrication est critique : cette garde doit envelopper
-    `sync_playwright()`, jamais l'inverse. Voir `try_annas_headful`.
-    """
-    try:
-        import resource
-        soft, hard = resource.getrlimit(resource.RLIMIT_AS)
-    except (ImportError, OSError):
-        yield
-        return
-    if soft == hard:
-        yield  # rien à lever (limite dure déjà au même niveau)
-        return
-    try:
-        resource.setrlimit(resource.RLIMIT_AS, (hard, hard))
-    except (ValueError, OSError):
-        yield
-        return
-    try:
-        yield
-    finally:
-        with contextlib.suppress(ValueError, OSError):
-            resource.setrlimit(resource.RLIMIT_AS, (soft, hard))
-
-
 def available() -> tuple[bool, str]:
     """La source est-elle utilisable ici ? (Playwright + affichage)"""
-    if not os.environ.get("DISPLAY"):
-        return False, "no_display_run_under_xvfb"
-    try:
-        import playwright  # noqa: F401
-    except ImportError:
-        return False, "playwright_not_installed"
-    return True, "ok"
+    return browser_available()
 
 
 def _content(pg, deadline: float, tries: int = 3) -> str:
@@ -199,36 +163,56 @@ def _load(pg, url: str, deadline: float, tries: int = 7, wait: int = 4000) -> st
     return ""
 
 
-def _md5_for(pg, ref: Ref, deadline: float) -> tuple[str | None, str]:
-    """MD5 via le champ déjà connu, sinon `/scidb/<doi>`, sinon recherche."""
+def _md5_candidates(pg, ref: Ref, deadline: float,
+                    maxi: int = 5) -> tuple[list[str], str]:
+    """Empreintes candidates, la plus sûre d'abord.
+
+    Plusieurs candidats et non un seul : un fichier écarté par la validation
+    page 1 doit laisser la place au suivant. Le fonds contient couramment
+    plusieurs éditions sous des empreintes différentes, des homonymes, et des
+    numérisations illisibles — s'arrêter au premier résultat, c'est renoncer
+    pour toute la référence sur un mauvais tirage.
+
+    Ordre : empreinte déjà connue, puis le lecteur d'articles, puis la
+    recherche par titre filtrée sur un mot distinctif.
+    """
     fm = ref.frontmatter
-    if fm.get("annas_md5"):
-        return fm["annas_md5"], "cached_md5"   # gratuit : pas de budget en jeu
+    out: list[str] = []
+
+    def add(x: str | None) -> None:
+        if x and x not in out:
+            out.append(x)
+
+    add(fm.get("annas_md5"))                  # gratuit : pas de budget en jeu
     if time.monotonic() > deadline:
-        return None, "budget_exhausted"
+        return out, "budget_exhausted" if not out else "cached_md5"
 
     from pipeline.cascade import _doi
     doi = _doi(ref)
     mirrors = get_aa_mirrors()
+    via = "cached_md5" if out else ""
 
     if doi:
         for mirror in mirrors:
-            if time.monotonic() > deadline:
-                return None, "budget_exhausted"
+            if len(out) >= maxi or time.monotonic() > deadline:
+                break
             found = re.findall(r"/md5/([0-9a-f]{32})",
                                _load(pg, f"https://{mirror}/scidb/{quote(doi, safe=':/')}",
                                      deadline))
+            for m in found:
+                add(m)
             if found:
-                return found[0], f"scidb:{mirror}"
+                via = via or f"scidb:{mirror}"
+                break
 
     title = (fm.get("title") or "").strip().strip("'\"")
     author = (fm.get("author") or "").split(",")[0].strip()
     if not title:
-        return None, "no_title_for_search"
+        return out, via or "no_title_for_search"
     words = [w.lower() for w in re.findall(r"[A-Za-zÀ-ÿ]{6,}", title)][:4]
     for mirror in mirrors:
-        if time.monotonic() > deadline:
-            return None, "budget_exhausted"
+        if len(out) >= maxi or time.monotonic() > deadline:
+            break
         html = _load(pg, f"https://{mirror}/search?q={quote(f'{title} {author}')}",
                      deadline)
         if not html:
@@ -237,8 +221,15 @@ def _md5_for(pg, ref: Ref, deadline: float) -> tuple[str | None, str]:
         for block in re.split(r'(?=<a[^>]+href="/md5/)', html):
             m = re.search(r'href="/md5/([0-9a-f]{32})"', block)
             if m and any(w in block.lower() for w in words):
-                return m.group(1), f"search:{mirror}"
-    return None, "no_md5_found"
+                add(m.group(1))
+                via = via or f"search:{mirror}"
+            if len(out) >= maxi:
+                break
+    if out:
+        return out[:maxi], via or "found"
+    if time.monotonic() > deadline:
+        return [], "budget_exhausted"
+    return [], "no_md5_found"
 
 
 def _download(pg, mirror: str, md5: str, deadline: float,
@@ -289,55 +280,50 @@ def try_annas_headful(ref: Ref) -> tuple[str, dict]:
     if not ok:
         return "no_source", {"reason": why}
 
-    from playwright.sync_api import sync_playwright
     from pipeline.cascade import _save_and_validate
 
     mirrors = get_aa_mirrors()
     deadline = time.monotonic() + BUDGET_S
     try:
-        # L'ordre des gardes n'est pas indifférent. `sync_playwright()` lance
-        # le pilote node dès son entrée, et c'est ce pilote — pas Python — qui
-        # lance ensuite Chromium. Le pilote hérite de la borne d'adressage en
-        # vigueur à l'instant où il naît : la lever après coup ne lui profite
-        # plus et le navigateur meurt au démarrage (issue #6). La garde doit
-        # donc être *à l'extérieur*.
-        with _wall_clock_guard(BUDGET_S + GUARD_GRACE_S), \
-                _address_space_unbounded(), sync_playwright() as pw:
-            browser = pw.chromium.launch(
-                headless=False,  # invisible ⇒ 502 côté serveur de fichiers
-                args=["--disable-blink-features=AutomationControlled",
-                      "--no-sandbox"])
+        with _wall_clock_guard(BUDGET_S + GUARD_GRACE_S):
             try:
-                ctx = browser.new_context(user_agent=UA, locale="en-US",
-                                          viewport={"width": 1360, "height": 900},
-                                          accept_downloads=True)
-                pg = ctx.new_page()
-                md5, via = _md5_for(pg, ref, deadline)
-                if not md5:
-                    if via == "budget_exhausted":
-                        return "failed", {"reason": "budget_exhausted_retry_later",
-                                          "via": "md5_lookup"}
-                    return "no_source", {"reason": via}
-                ref.frontmatter.setdefault("annas_md5", md5)
+                pg = get_page()
+            except BrowserUnavailable as e:
+                return "no_source", {"reason": str(e)}
+
+            candidates, via = _md5_candidates(pg, ref, deadline)
+            if not candidates:
+                if via == "budget_exhausted":
+                    return "failed", {"reason": "budget_exhausted_retry_later",
+                                      "via": "md5_lookup"}
+                return "no_source", {"reason": via}
+            ref.frontmatter.setdefault("annas_md5", candidates[0])
+
+            rejected = []
+            for md5 in candidates:
                 for mirror in mirrors:
                     if time.monotonic() > deadline:
-                        break
+                        return "failed", {"reason": "budget_exhausted_retry_later",
+                                          "md5": md5, "via": via}
                     data, how = _download(pg, mirror, md5, deadline)
-                    if data:
-                        verdict, info = _save_and_validate(data, ref)
+                    if not data:
+                        continue
+                    verdict, info = _save_and_validate(data, ref)
+                    if verdict == "success":
                         info.setdefault("via", f"{via}/{how}@{mirror}")
                         return verdict, info
-                # Budget épuisé ⇒ échec *passager* : la fiche reste reprenable.
-                # Miroirs épuisés dans les temps ⇒ échec passager aussi, mais
-                # pour une autre raison (créneaux tous contingentés).
-                spent = time.monotonic() > deadline
-                return "failed", {
-                    "reason": ("budget_exhausted_retry_later" if spent
-                               else "all_mirrors_no_slot"),
-                    "md5": md5, "via": via}
-            finally:
-                with contextlib.suppress(Exception):
-                    browser.close()
+                    # Mauvais tirage : on essaie l'empreinte suivante plutôt
+                    # que de renoncer pour toute la référence.
+                    rejected.append({"md5": md5[:12], "verdict": verdict,
+                                     "reason": info.get("reason")})
+                    break
+            spent = time.monotonic() > deadline
+            return "failed", {
+                "reason": ("budget_exhausted_retry_later" if spent
+                           else "all_candidates_rejected" if rejected
+                           else "all_mirrors_no_slot"),
+                "via": via, "candidates": len(candidates),
+                "rejected": rejected[:5]}
     except _BudgetExpired:
         # Le garde-fou dur a coupé : une attente non bornée par Playwright
         # (fin de téléchargement) a dépassé le budget. Reprenable.

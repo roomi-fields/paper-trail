@@ -54,37 +54,6 @@ def test_source_indisponible_ne_tente_rien(monkeypatch):
     assert info["reason"] == "no_display_run_under_xvfb"
 
 
-# ─── Borne d'espace d'adressage ─────────────────────────────────────────────
-
-def test_run_preserve_la_limite_dure():
-    """`pipeline run` ne doit pas verrouiller la limite dure : sinon la borne
-    est irréversible et aucun navigateur ne peut plus démarrer."""
-    soft0, hard0 = resource.getrlimit(resource.RLIMIT_AS)
-    try:
-        _set_memory_limit(1.5)
-        soft, hard = resource.getrlimit(resource.RLIMIT_AS)
-        assert hard == hard0, "la limite dure d'origine doit être préservée"
-        assert soft <= 1.5 * 1024 ** 3
-    finally:
-        resource.setrlimit(resource.RLIMIT_AS, (soft0, hard0))
-
-
-def test_borne_levee_puis_retablie():
-    soft0, hard0 = resource.getrlimit(resource.RLIMIT_AS)
-    borne = 1536 * 1024 * 1024
-    if hard0 != resource.RLIM_INFINITY and hard0 <= borne:
-        pytest.skip("limite dure déjà basse dans cet environnement")
-    resource.setrlimit(resource.RLIMIT_AS, (borne, hard0))
-    try:
-        with ah._address_space_unbounded():
-            dedans, _ = resource.getrlimit(resource.RLIMIT_AS)
-            assert dedans == hard0, "la borne doit être levée pour le lancement"
-        apres, _ = resource.getrlimit(resource.RLIMIT_AS)
-        assert apres == borne, "la borne doit être rétablie après le lancement"
-    finally:
-        resource.setrlimit(resource.RLIMIT_AS, (soft0, hard0))
-
-
 # ─── Épuisement du budget = attente, pas verrou ─────────────────────────────
 
 def test_budget_epuise_est_un_echec_passager():
@@ -109,71 +78,10 @@ def test_test_denvironnement_sans_config_de_vault():
     assert "no_display_run_under_xvfb" in r.stdout
 
 
-# ─── Issue #6 : le pilote du navigateur naît hors de la borne mémoire ───────
-
-def _fausse_playwright(monkeypatch, a_l_ouverture):
-    """Installe un faux paquet `playwright` dont l'ouverture est instrumentée.
-
-    L'ouverture de `sync_playwright()` est le moment où le pilote node est
-    lancé — c'est *là* que la borne d'espace d'adressage doit déjà être levée.
-    """
-    import types
-
-    class _Abandon(Exception):
-        """Interrompt la source une fois la mesure prise."""
-
-    class _Session:
-        def __enter__(self):
-            a_l_ouverture()
-            raise _Abandon
-        def __exit__(self, *a):
-            return False
-
-    paquet = types.ModuleType("playwright")
-    api = types.ModuleType("playwright.sync_api")
-    api.sync_playwright = lambda: _Session()
-    paquet.sync_api = api
-    monkeypatch.setitem(sys.modules, "playwright", paquet)
-    monkeypatch.setitem(sys.modules, "playwright.sync_api", api)
-    return _Abandon
-
-
 def _ref_test():
     from pipeline.registry import Ref
     return Ref(slug="t", path=Path("/nonexistent/t.md"),
                frontmatter={"slug": "t", "state": "uid_resolved"}, body="\n")
-
-
-def test_le_pilote_du_navigateur_nait_hors_de_la_borne(monkeypatch):
-    """Régression issue #6.
-
-    `pipeline run` borne l'espace d'adressage à 1,5 Go. Le pilote node hérite
-    de la borne en vigueur à sa naissance, et c'est *lui* qui lance Chromium.
-    Si la garde qui lève la borne est imbriquée après `sync_playwright()`,
-    le navigateur meurt au démarrage. On mesure donc la borne au moment exact
-    de l'ouverture de la session Playwright.
-    """
-    soft0, hard0 = resource.getrlimit(resource.RLIMIT_AS)
-    borne = 1536 * 1024 * 1024
-    if hard0 != resource.RLIM_INFINITY and hard0 <= borne:
-        pytest.skip("limite dure déjà basse dans cet environnement")
-
-    monkeypatch.setenv("DISPLAY", ":99")
-    vu = {}
-    abandon = _fausse_playwright(
-        monkeypatch,
-        lambda: vu.__setitem__("soft", resource.getrlimit(resource.RLIMIT_AS)[0]))
-
-    resource.setrlimit(resource.RLIMIT_AS, (borne, hard0))
-    try:
-        with pytest.raises(abandon):
-            ah.try_annas_headful(_ref_test())
-    finally:
-        resource.setrlimit(resource.RLIMIT_AS, (soft0, hard0))
-
-    assert vu["soft"] == hard0, (
-        "la borne doit déjà être levée quand le pilote est lancé, "
-        "sinon le pilote en hérite et Chromium meurt au démarrage")
 
 
 # ─── Issue #7 : le budget est une garantie, pas une intention ──────────────
@@ -185,23 +93,11 @@ def test_le_budget_coupe_une_attente_non_bornee(monkeypatch):
     Le garde-fou dur doit rendre la main malgré tout, avec un échec passager.
     """
     import time as _t
-    import types
-
-    class _Session:
-        def __enter__(self):
-            _t.sleep(60)   # attente non bornée, comme un transfert qui se tait
-        def __exit__(self, *a):
-            return False
-
-    paquet = types.ModuleType("playwright")
-    api = types.ModuleType("playwright.sync_api")
-    api.sync_playwright = lambda: _Session()
-    paquet.sync_api = api
-    monkeypatch.setitem(sys.modules, "playwright", paquet)
-    monkeypatch.setitem(sys.modules, "playwright.sync_api", api)
     monkeypatch.setenv("DISPLAY", ":99")
     monkeypatch.setattr(ah, "BUDGET_S", 1)
     monkeypatch.setattr(ah, "GUARD_GRACE_S", 0)
+    # Une attente que rien ne borne, là où le navigateur travaillerait.
+    monkeypatch.setattr(ah, "get_page", lambda: _t.sleep(60))
 
     depart = _t.monotonic()
     verdict, info = ah.try_annas_headful(_ref_test())
@@ -254,5 +150,5 @@ def test_echeance_depassee_aucune_navigation(monkeypatch):
 
     assert ah._load(pg, "https://x/", echu) == ""
     assert ah._download(pg, "x", "0" * 32, echu) == (None, "budget_exhausted")
-    assert ah._md5_for(pg, _ref_test(), echu) == (None, "budget_exhausted")
+    assert ah._md5_candidates(pg, _ref_test(), echu) == ([], "budget_exhausted")
     assert pg.appels == [], f"le navigateur a été sollicité après l'échéance : {pg.appels}"

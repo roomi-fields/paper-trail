@@ -824,6 +824,10 @@ def _warn_shadow_disclaimer_once() -> None:
 
 def _build_cascade() -> list[tuple[str, Callable[[Ref], tuple[str, dict]]]]:
     """Construit la cascade — shadow libs conditionnelles via env var."""
+    # Ordre : le moins cher d'abord. Les annuaires d'accès ouvert coûtent une
+    # requête ; la page de l'éditeur en coûte quelques-unes ; le navigateur
+    # coûte plusieurs secondes. Les fonds de l'ombre viennent en dernier.
+    from lib.acquire.publisher import try_publisher_doi
     cascade = [
         ("manual_oa_url", try_manual_url),  # F0 — URL fournie via frontmatter
         ("crossref_oa", try_crossref_oa),
@@ -832,32 +836,60 @@ def _build_cascade() -> list[tuple[str, Callable[[Ref], tuple[str, dict]]]]:
         ("unpaywall", try_unpaywall),
         ("hal", try_hal),
         ("core", try_core),
+        # Ouvrir simplement l'adresse de l'article chez son éditeur : les
+        # annuaires ne référencent pas tout ce que les éditeurs publient.
+        ("publisher_doi", try_publisher_doi),
         ("archive_org", try_archive_org),  # F3 — étape 5c (2026-05-24)
     ]
+
+    # Voies pilotées au navigateur. Ce ne sont pas des fonds de l'ombre : elles
+    # ne prennent que ce que l'éditeur ou l'auteur met lui-même en ligne. Elles
+    # ne s'activent que si un affichage et Playwright sont disponibles.
+    from lib.browser_session import available as _browser_available
+    _browser_ok, _browser_why = _browser_available()
+    if _browser_ok:
+        from lib.acquire.publisher_headful import try_publisher_headful
+        from lib.acquire.researchgate import available_here as _rg_available
+        from lib.acquire.researchgate import try_researchgate
+        cascade.append(("publisher_headful", try_publisher_headful))
+        _rg_ok, _rg_why = _rg_available()
+        if _rg_ok:
+            cascade.append(("researchgate", try_researchgate))
+        else:
+            print(f"[cascade] researchgate source unavailable ({_rg_why}) — "
+                  f"it needs your own session cookies, exported to a file "
+                  f"named by RESEARCH_BROWSER_COOKIES. "
+                  f"Details: docs/ACQUISITION_HEADFUL.md", file=sys.stderr)
+    else:
+        print(f"[cascade] browser-driven sources unavailable ({_browser_why}) "
+              f"— the other sources carry on normally. To enable them: "
+              f"`pip install playwright && playwright install chromium`, "
+              f"then run under `xvfb-run -a`. "
+              f"Details: docs/ACQUISITION_HEADFUL.md", file=sys.stderr)
+
     if os.environ.get("RESEARCH_ENABLE_SHADOW_LIBS") == "1":
         from lib.shadow.scihub import try_scihub
         from lib.shadow.annas_archive import try_annas_archive
+        from lib.shadow.libgen import try_libgen
         _warn_shadow_disclaimer_once()
         cascade += [
             ("scihub_optin", try_scihub),
             ("annas_archive_optin", try_annas_archive),
+            # Fonds distinct d'Anna's Archive, sans contrôle anti-robot ni
+            # créneau contingenté : il aboutit là où la file d'attente
+            # d'Anna's ne délivre plus rien.
+            ("libgen_optin", try_libgen),
         ]
-        # Dernier recours avant la queue websearch : Anna's piloté par un
-        # navigateur *visible*. Le serveur de fichiers partenaire répond 502
-        # à un navigateur invisible mais sert normalement un navigateur
-        # fenêtré (cf. issue #1). Ne s'active que si Playwright et un
-        # affichage sont là — sinon la source se déclare `no_source`.
-        from lib.shadow.annas_headful import available as _headful_available
-        from lib.shadow.annas_headful import try_annas_headful
-        _ok, _why = _headful_available()
-        if _ok:
-            cascade.append(("annas_headful_optin", try_annas_headful))
-        else:
-            print(f"[cascade] annas_headful source unavailable ({_why}) — "
-                  f"the other sources carry on normally. To enable it: "
-                  f"`pip install playwright && playwright install chromium`, "
-                  f"then run under `xvfb-run -a`. Details: docs/ACQUISITION_HEADFUL.md",
-                  file=sys.stderr)
+        if _browser_ok:
+            # Le lecteur d'articles d'Anna's : porte distincte du fonds
+            # général, sans file d'attente. À essayer AVANT la voie par
+            # créneaux, qui est contingentée et bien plus lente.
+            from lib.shadow.annas_scidb import try_annas_scidb
+            from lib.shadow.annas_headful import try_annas_headful
+            cascade += [
+                ("annas_scidb_optin", try_annas_scidb),
+                ("annas_headful_optin", try_annas_headful),
+            ]
     cascade.append(("websearch", try_websearch))
     return cascade
 
