@@ -5,6 +5,68 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-09-03
+
+The plugin queried open-access directories but never made the gesture a human
+makes: open the article, spot the file, take it. References available in three
+clicks went unacquired. This release adds the routes that a four-month field
+deployment had to write alongside the plugin, for want of them inside it.
+
+### Added
+
+- **Five acquisition routes**, cheapest first:
+  - `publisher_doi` — follows the DOI to the publisher and reads the
+    standard full-text declaration, over two levels. No browser, no opt-in:
+    directories do not list everything publishers put online.
+  - `publisher_headful` — the same through a real browser, for publishers
+    that refuse every programmatic client. Measured: Frontiers yields only
+    to this route, PMC already yields to the previous one.
+  - `researchgate` — author-deposited full texts, using your own session
+    cookies (`RESEARCH_BROWSER_COOKIES`). A record too far from the title is
+    refused rather than downloaded and then rejected.
+  - `libgen_optin` — a holding distinct from Anna's Archive, with no anti-bot
+    challenge and no rationed queue. It succeeds where Anna's queue has
+    stopped delivering.
+  - `annas_scidb_optin` — Anna's article reader: a door with no rationing,
+    tried *before* the slot-based route. It accounts for most of the
+    failures observed on that holding.
+- **A shared browser session.** One window for the whole pass instead of one
+  per reference: the opening cost is no longer paid per ref, and the profile
+  persists, so session cookies and a cleared anti-bot challenge survive.
+- `--ref` now accepts several slugs. A full pass replays every known failure
+  of every waiting reference; acquiring a few new ones took a quarter of an
+  hour.
+
+### Changed
+
+- Anna's Archive slot route now tries **up to five candidate fingerprints**.
+  A single result was kept, so one bad printing — another edition, a
+  namesake, an unreadable scan — condemned the whole reference.
+- Run output is line-buffered. Under a scheduled job nothing appeared before
+  the pass ended, so there was no way to tell work from a hang.
+
+### Fixed
+
+- **Honorifics taken for surnames** (issue #8). The author check looked for
+  the *first word* of the author field: `Maître Eckhart` made it look for
+  "Maître", `Anonyme (X)` for "Anonyme". A genuine edition was refused
+  twice. All plausible name fragments are now tried, and the file's own
+  metadata serve as a last resort.
+- **Previews and reviews accepted as the work** (issue #9). A review
+  reproduces the author and title on its first page, so it passed every
+  identity check. The existing detection was capped at 3,000 characters — a
+  thirteen-page review slipped through. Three checks replace that cap, all
+  on the head of the text so a bibliography entry does not count, plus a
+  page floor for references explicitly declared as books. The page count is
+  now recorded in the validation log.
+- **An undated citation never matched its own registry entry** (issue #10).
+  The registry writes `0000` for an unknown year while the citation yields
+  an empty string, so the comparison always failed and every re-ingest
+  created another ref (`_2`, `_3`, `_4`). The same file was downloaded
+  twice, the manual queue filled with duplicates, and attempt history was
+  split across them. Undated citations are now matched on name and title
+  alone, at a stricter similarity.
+
 ## [0.3.17] — 2026-09-03
 
 Three defects confirmed from a four-month field report on an outside corpus
@@ -591,6 +653,7 @@ See `NOTICE.md` for full attribution.
 
 ---
 
+[0.4.0]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.4.0
 [0.3.17]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.3.17
 [0.3.16]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.3.16
 [0.3.15]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.3.15
