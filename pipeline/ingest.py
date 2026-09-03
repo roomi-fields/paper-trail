@@ -311,6 +311,13 @@ def _title_first_significant_word(title: str) -> str:
     return _to_ascii_lower(words[0]) if words else "untitled"
 
 
+# Une année absente est écrite `0000` au registre : les deux formes désignent
+# la même chose, « on ne sait pas ».
+UNKNOWN_YEARS = {"", "0000"}
+# Seuil de ressemblance du titre quand l'année ne peut pas trancher.
+UNDATED_TITLE_THRESHOLD = 0.90
+
+
 def _make_slug(author: str, year: str, title: str) -> str:
     """Génère un slug canonique pour une ref.
 
@@ -621,6 +628,13 @@ def _reconcile_with_registry(
     2. RTFM `rtfm search` pour pré-filtrer 10 candidats max
        → fuzzy match sur ces 10 (auteur+année+titre Levenshtein)
     3. Si RTFM rien ne donne, fallback fuzzy sur tout le registre
+
+    Quand l'année est inconnue d'un côté ou de l'autre, on rapproche sur le
+    seul couple (nom, titre), à un seuil de ressemblance plus exigeant. Sans
+    cela, une citation sans date ne se reconnaissait jamais dans le registre :
+    chaque ré-ingestion créait une fiche de plus (`_2`, `_3`, `_4`), le même
+    fichier était téléchargé deux fois, et l'historique des tentatives se
+    répartissait entre les doublons (issue #10).
     """
     cite_lastname = _extract_first_author_lastname(citation.author)
     cite_year = re.sub(r"[^0-9]", "", citation.year or "")[:4]
@@ -646,22 +660,28 @@ def _reconcile_with_registry(
     if not refs_to_check:
         refs_to_check = refs_cache
 
-    # Fuzzy match : auteur exact + année exacte + Levenshtein titre
+    # Fuzzy match : auteur exact + année (si connue) + Levenshtein titre
     for ref in refs_to_check:
         fm = ref.frontmatter
         ref_author = fm.get("author") or ""
         ref_year = re.sub(r"[^0-9]", "", str(fm.get("year") or ""))[:4]
-        if not ref_author or not ref_year:
+        if not ref_author:
             continue
         if _extract_first_author_lastname(ref_author) != cite_lastname:
             continue
-        if ref_year != cite_year:
+        both_years_known = (cite_year not in UNKNOWN_YEARS
+                            and ref_year not in UNKNOWN_YEARS)
+        if both_years_known and ref_year != cite_year:
             continue
         ref_title_norm = _normalize_title(fm.get("title") or "")
         if not ref_title_norm or not cite_title_norm:
             continue
         sim = SequenceMatcher(None, ref_title_norm, cite_title_norm).ratio()
-        if sim >= title_threshold:
+        # Sans année pour trancher, le titre porte seul la décision : on
+        # l'exige plus proche, pour ne pas confondre deux œuvres d'un même
+        # auteur aux titres voisins.
+        required = title_threshold if both_years_known else UNDATED_TITLE_THRESHOLD
+        if sim >= required:
             return ref.slug
     return None
 
