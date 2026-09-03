@@ -5,6 +5,37 @@ All notable changes to the `paper-trail` plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.17] — 2026-09-03
+
+Three defects confirmed from a four-month field report on an outside corpus
+(316 refs, 273 verified documents, 16 reviews) — the first use of the plugin
+outside its author's own vault.
+
+### Fixed
+
+- **An unreadable ref was skipped without a word.** `load_ref` returned
+  `None` and `iter_refs` silently dropped the file, so a reference vanished
+  from every acquisition pass with nothing to show for it — two full passes
+  were lost to this. Parse failures are now named: the pass prints the slug
+  and the reason (`invalid YAML: …`, `no frontmatter delimiter`,
+  `unterminated frontmatter block`). `load_ref` keeps its contract;
+  `load_ref_verbose` and `parse_frontmatter_md_verbose` carry the reason.
+- **A Crossref title could produce a filename containing a literal
+  newline**, which breaks every command-line tool operating on the vault.
+  Crossref returns titles wrapped over several lines and carrying JATS
+  markup; the filename sanitizer filtered on "neither word nor whitespace",
+  and whitespace includes the newline, so a folded title survived it.
+  Titles and venues taken from metadata providers are now stripped of
+  markup and collapsed to single spaces before being written, and the
+  derived filename is sanitized after that, not before.
+- **Ingest wrote the initial ref file without checking it parses.** It is
+  the one registry write that does not go through `save_ref`, which always
+  re-reads what it just wrote. It now performs the same check and refuses
+  rather than leaving an unreadable ref behind. The two remaining bare
+  scalars in the template — the source review's path and the PDF path — are
+  now quoted, so a colon in a folder or file name no longer corrupts the
+  ref.
+
 ## [0.3.16] — 2026-08-23
 
 ### Fixed
@@ -560,6 +591,7 @@ See `NOTICE.md` for full attribution.
 
 ---
 
+[0.3.17]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.3.17
 [0.3.16]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.3.16
 [0.3.15]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.3.15
 [0.3.14]: https://github.com/roomi-fields/paper-trail/releases/tag/v0.3.14
