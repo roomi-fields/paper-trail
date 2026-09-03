@@ -306,6 +306,7 @@ def _validate_page1(pdf_path: Path, ref: Ref) -> tuple[bool, str]:
         expected_year=str(ref.frontmatter.get("year") or ""),
         expected_title=ref.frontmatter.get("title") or "",
         expected_doi=_doi(ref) or "",
+        expect_book=str(ref.frontmatter.get("type") or "").lower() == "book",
     )
 
 

@@ -14,6 +14,8 @@ Cas réels recensés ayant motivé ce module :
 - Poeppel 2011 → électronique de puissance
 """
 import re
+import contextlib
+import os
 import subprocess
 import zipfile
 from pathlib import Path
@@ -116,6 +118,83 @@ GENERIC_TITLE_WORDS = {
     "framework", "application", "applications", "introduction", "overview", "survey",
     "review", "toward", "novel", "improved", "efficient", "robust", "scale", "large",
 }
+
+
+# Titres de civilité et marques d'attribution collective. Pris pour un nom de
+# famille, ils font chercher « Maître » dans une édition des sermons d'Eckhart,
+# ou « Anonyme » dans le Mahābhārata (issue #8).
+HONORIFICS = {
+    "maitre", "maître", "meister", "master", "saint", "sainte", "st", "ste",
+    "don", "dona", "dom", "frere", "frère", "pere", "père", "mere", "mère",
+    "soeur", "sœur", "abbe", "abbé", "mgr", "monseigneur", "reverend",
+    "révérend", "rev", "sri", "shri", "swami", "sheikh", "shaykh", "rabbi",
+    "imam", "guru", "gourou", "lama", "roshi", "venerable", "vénérable",
+    "dr", "prof", "professor", "professeur", "sir", "lord", "lady",
+    "mr", "mrs", "ms", "mme", "mlle", "monsieur", "madame",
+}
+# Particules : jamais discriminantes seules.
+PARTICLES = {"de", "du", "des", "la", "le", "les", "van", "von", "der", "den",
+             "del", "della", "di", "da", "dos", "das", "al", "el", "ibn", "bin",
+             "and", "the", "of"}
+# Attributions collectives : le nom utile est ce qui suit, souvent entre
+# parenthèses — « Anonyme (Mahābhārata) ».
+ANONYMOUS = {"anonyme", "anonymous", "anon", "collectif", "collective",
+             "various", "divers", "unknown", "inconnu"}
+
+
+def author_name_tokens(author: str, min_len: int = 3) -> list[str]:
+    """Fragments d'un champ auteur susceptibles d'être un nom, le plus
+    discriminant d'abord.
+
+    Le champ auteur du registre est irrégulier : titre de civilité en tête
+    (« Maître Eckhart »), attribution collective (« Anonyme (Mahābhārata) »),
+    concaténation issue du slug (« ShieberSchabesPereira »). Chercher son
+    *premier* mot revenait à chercher un mot qui n'est pas un nom.
+    """
+    raw = (author or "").strip()
+    if not raw:
+        return []
+    # « Anonyme (Mahābhārata) » : le nom utile est entre parenthèses.
+    inside = re.findall(r"\(([^)]+)\)", raw)
+    stem = re.sub(r"\([^)]*\)", " ", raw)
+    if any(w.lower().strip(".,") in ANONYMOUS for w in re.findall(r"[^\s,]+", stem)):
+        raw = " ".join(inside) or stem
+    tokens, seen = [], set()
+    for word in re.findall(r"[^\W\d_]+", raw, flags=re.UNICODE):
+        low = word.lower()
+        if (len(word) < min_len or low in HONORIFICS or low in PARTICLES
+                or low in ANONYMOUS or low in seen):
+            continue
+        seen.add(low)
+        tokens.append(word)
+    # Le mot le plus long est le plus discriminant : « Eckhart » avant « Sermons ».
+    return sorted(tokens, key=len, reverse=True)
+
+
+def pdf_info(pdf_path) -> dict:
+    """Métadonnées et nombre de pages, lus dans le fichier lui-même.
+
+    Sert de recours quand les premières pages ne portent pas de ligne d'auteur
+    — la couverture d'une édition ancienne, typiquement — alors que les
+    métadonnées, elles, nomment l'ouvrage et son auteur.
+    """
+    out = {"pages": 0, "title": "", "author": "", "subject": ""}
+    try:
+        r = subprocess.run(["pdfinfo", str(pdf_path)], capture_output=True,
+                           timeout=15, text=True, errors="ignore")
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return out
+    if r.returncode != 0:
+        return out
+    for line in r.stdout.splitlines():
+        key, _, value = line.partition(":")
+        key, value = key.strip().lower(), value.strip()
+        if key == "pages":
+            with contextlib.suppress(ValueError):
+                out["pages"] = int(value)
+        elif key in ("title", "author", "subject"):
+            out[key] = value
+    return out
 
 
 def distinctive_title_words(title: str, min_len: int = 5) -> list[str]:
@@ -283,10 +362,58 @@ def detect_on_domain(text: str) -> list[str]:
     return [kw for kw in ON_DOMAIN_KEYWORDS if kw in text_low]
 
 
+# Un document qui parle de l'ouvrage n'est pas l'ouvrage. Une recension en
+# reproduit l'auteur et le titre en première page — c'est précisément ce qui
+# lui faisait passer le garde anti-homonymie (issue #9).
+REVIEW_MARKERS = (
+    "review by:", "reviewed by:", "book review", "brief reviews of books",
+    "compte rendu de", "reviews of books", "review of the book",
+    "recension de", "note de lecture",
+)
+# En-tête de revue : une recension paraît dans un périodique, l'ouvrage non.
+JOURNAL_HEADER = re.compile(
+    r"(volume\s+\d+[,\s]+(number|issue|no\.?)\s*\d+"
+    r"|vol\.?\s*\d+[,\s]+(no\.?|n°)\s*\d+"
+    r"|issn\s*:?\s*\d{4}-?\d{3}[\dxX])",
+    re.I)
+# Aperçu commercial : page de titre seule, ou extrait annoncé comme tel.
+SAMPLE_MARKERS = ("sample chapter", "preview copy", "excerpt from",
+                  "extrait de", "specimen", "this is a preview",
+                  "front matter only")
+# Un ouvrage tient rarement en moins de pages ; en dessous, ce qu'on a reçu
+# est un aperçu, une notice ou une recension, pas le livre.
+MIN_BOOK_PAGES = int(os.environ.get("RESEARCH_MIN_BOOK_PAGES") or 30)
+
+
+def looks_like_about_the_work(text: str, pages: int) -> str | None:
+    """Le fichier parle-t-il de l'ouvrage au lieu d'être l'ouvrage ?
+
+    Rend le motif du refus, ou `None` si rien ne cloche. On ne regarde que le
+    début du texte : « book review » figure légitimement dans la bibliographie
+    d'un vrai livre, mais pas dans son en-tête.
+    """
+    head = text[:1500].lower()
+    marker = next((m for m in REVIEW_MARKERS if m in head), None)
+    if marker:
+        # Court, ou paru dans un périodique : c'est la recension elle-même.
+        if pages and pages <= 40:
+            return f"pdf_is_a_review_of_the_work [{marker!r}, {pages}p]"
+        if JOURNAL_HEADER.search(head):
+            return f"pdf_is_a_review_of_the_work [{marker!r}, journal header]"
+    sample = next((m for m in SAMPLE_MARKERS if m in head), None)
+    if sample:
+        return f"pdf_is_a_sample_not_the_work [{sample!r}]"
+    # Une à deux pages sans matière : page de titre d'un aperçu de librairie.
+    if pages and pages <= 2 and len(text.strip()) < 3000:
+        return f"pdf_is_a_cover_or_preview [{pages}p, {len(text.strip())} chars]"
+    return None
+
+
 def validate_pdf_against_ref(pdf_path: Path, expected_author: str = "",
                               expected_year: str = "", expected_title: str = "",
                               required_title_match: float = 0.0,
-                              expected_doi: str = "") -> tuple[bool, str]:
+                              expected_doi: str = "",
+                              expect_book: bool = False) -> tuple[bool, str]:
     """Valide qu'un PDF correspond à la ref attendue.
 
     Args:
@@ -295,6 +422,9 @@ def validate_pdf_against_ref(pdf_path: Path, expected_author: str = "",
         expected_year: année attendue
         expected_title: titre attendu (similarité vs page 1)
         required_title_match: seuil min de similarité titre (0 = pas de check)
+        expect_book: la référence est déclarée comme un ouvrage — on exige
+            alors un nombre de pages plancher, un livre ne tenant pas en
+            quelques feuillets.
         expected_doi: DOI attendu — si présent ET trouvé dans page 1 OU
             les 6 premières pages, l'identité est garantie : on accepte
             même si le titre ne match pas (cas thèse multilingue : titre
@@ -377,11 +507,14 @@ def validate_pdf_against_ref(pdf_path: Path, expected_author: str = "",
     if off and len(off) > len(on):
         return False, f"bad_match_majority_off_domain {off[:3]} vs_on={on[:3]}"
 
-    # Check auteur si fourni : doit apparaître quelque part dans page 1
+    # Check auteur si fourni : un fragment du nom doit apparaître page 1.
+    # On essaie TOUS les fragments plausibles, pas seulement le premier mot :
+    # « Maître Eckhart » faisait chercher « Maître », et « Anonyme (X) »
+    # faisait chercher « Anonyme » (issue #8).
     if expected_author:
-        # Premier nom (lastname) de l'auteur
-        first_name = expected_author.split()[0] if expected_author.split() else ""
-        if len(first_name) >= 3 and first_name.lower() not in text.lower():
+        tokens = author_name_tokens(expected_author)
+        text_low_a = text.lower()
+        if tokens and not any(t.lower() in text_low_a for t in tokens):
             # Auteur pas dans la page 1 — pas un kill switch, mais suspect
             # surtout si pas de on-domain
             if not on:
@@ -392,13 +525,22 @@ def validate_pdf_against_ref(pdf_path: Path, expected_author: str = "",
                 head = extract_head_pages(pdf_path)
                 head_low = head.lower()
                 head_on = detect_on_domain(head)
-                if first_name.lower() in head_low or head_on:
+                if any(t.lower() in head_low for t in tokens) or head_on:
                     # Re-évaluer en élargissant le texte pour les checks
                     # de titre qui suivent.
                     text = head
                     on = head_on
                 else:
-                    return False, f"author_{first_name}_not_in_first_pages and no_domain_keywords"
+                    # Dernier recours : les métadonnées du fichier. Une
+                    # édition ancienne dont la couverture est une image ne
+                    # porte aucune ligne d'auteur, alors que ses métadonnées
+                    # nomment l'ouvrage et son auteur.
+                    meta = pdf_info(pdf_path)
+                    blob = " ".join((meta["title"], meta["author"],
+                                     meta["subject"])).lower()
+                    if not (blob and any(t.lower() in blob for t in tokens)):
+                        return False, (f"author_not_in_first_pages_or_metadata "
+                                       f"(tried {tokens[:3]}) and no_domain_keywords")
 
     # Check titre si fourni avec seuil
     if expected_title and required_title_match > 0:
@@ -475,17 +617,25 @@ def validate_pdf_against_ref(pdf_path: Path, expected_author: str = "",
     # est vérifiée de façon fiable par les agents claim-verify qui LISENT le PDF.
     # Le garde anti-homonymie repose donc sur le mot distinctif du titre (ci-dessus).
 
-    # NEW 2026-05-19 : détecter pattern "Review by:" / "Brief Reviews of Books"
-    # — un PDF d'1 page review n'est pas le vrai livre/article
-    review_patterns = [
-        "review by:", "reviewed by:", "brief reviews of books",
-        "book review", "compte rendu de"
-    ]
-    text_low = text.lower()
-    if any(p in text_low for p in review_patterns) and len(text) < 3000:
-        return False, "pdf_is_review_not_full_text"
+    # Contrôle de substance : le fichier est-il l'ouvrage, ou un document qui
+    # en parle ? Une recension et un aperçu reproduisent l'auteur et le titre
+    # en première page : ils franchissaient donc tous les contrôles ci-dessus.
+    # L'ancienne détection ne regardait que les fichiers de moins de
+    # 3 000 caractères, ce qu'une recension de treize pages dépasse (issue #9).
+    meta = pdf_info(pdf_path)
+    pages = meta["pages"]
+    wrong_kind = looks_like_about_the_work(text, pages)
+    if wrong_kind:
+        return False, wrong_kind
 
-    return True, f"validated [on_domain={len(on)} off={len(off)}]"
+    # Plancher de pages pour les ouvrages explicitement déclarés tels. On ne
+    # l'applique pas par défaut : un article court et légitime serait refusé.
+    if expect_book and pages and pages < MIN_BOOK_PAGES:
+        return False, (f"book_too_short [{pages}p < {MIN_BOOK_PAGES}] "
+                       f"(preview, notice or review rather than the work)")
+
+    return True, (f"validated [on_domain={len(on)} off={len(off)} "
+                  f"pages={pages or '?'}]")
 
 
 def validate_text_against_ref(text: str, expected_author: str = "",
@@ -514,12 +664,15 @@ def validate_text_against_ref(text: str, expected_author: str = "",
     if off and len(off) > len(on):
         return False, f"bad_match_majority_off_domain {off[:3]} vs_on={on[:3]}"
 
-    # Check auteur si fourni
+    # Check auteur si fourni — même règle que sur le texte natif : tous les
+    # fragments plausibles du nom, pas seulement le premier mot (issue #8).
     if expected_author:
-        first_name = expected_author.split()[0] if expected_author.split() else ""
-        if len(first_name) >= 3 and first_name.lower() not in text.lower():
+        tokens = author_name_tokens(expected_author)
+        text_low_a = text.lower()
+        if tokens and not any(t.lower() in text_low_a for t in tokens):
             if not on:
-                return False, f"author_{first_name}_not_in_ocr_text and no_on_domain"
+                return False, (f"author_not_in_ocr_text (tried {tokens[:3]}) "
+                               f"and no_on_domain")
 
     # Check titre via mots distinctifs si fourni
     if expected_title:
